@@ -627,11 +627,18 @@ window.addEventListener("hashchange", () => { closeDrawer(); render(); });
 
 // Live updates: poll state; re-render views that show job state while things are running.
 let lastSig = "";
+let booted = false;
 setInterval(async () => {
   try {
     await refresh();
   } catch {
     return;
+  }
+  if (!booted) {
+    // The first load stalled (e.g. a slow cold GitHub call): recover as soon as data arrives.
+    booted = true;
+    lastSig = state.ov.jobs.map((j) => j.id + j.status).join();
+    return render();
   }
   const sig = state.ov.jobs.map((j) => j.id + j.status).join();
   if (state.view === "jobs") return paintJob().then(() => sig !== lastSig && viewJobs()).finally(() => (lastSig = sig));
@@ -648,6 +655,8 @@ setInterval(async () => {
     main.innerHTML = `<div class="banner"><b>ERROR</b><span>${esc(e.message)}</span></div>`;
     return;
   }
+  if (booted) return;
+  booted = true;
   lastSig = state.ov.jobs.map((j) => j.id + j.status).join();
   render();
 })();

@@ -17,7 +17,10 @@ export async function owner() {
 }
 
 async function ghJson(args, { allowFail = false } = {}) {
-  const r = await exec("gh", args, { capture: true, quiet: true, allowFail });
+  const r = await exec("gh", args, { capture: true, quiet: true, allowFail, signal: AbortSignal.timeout(30_000) }).catch((e) => {
+    if (allowFail) return { code: 1, stderr: e.name === "AbortError" ? "gh timed out after 30s" : e.message };
+    throw e;
+  });
   if (r.code !== 0) return { error: (r.stderr || "").trim().split("\n").pop() || `exit ${r.code}` };
   try {
     return JSON.parse(r.stdout || "null");
