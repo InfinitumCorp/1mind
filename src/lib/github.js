@@ -11,16 +11,32 @@ export const validRepo = (n) => typeof n === "string" && REPO_NAME.test(n) && n 
 let ownerCache = process.env.ONEMIND_GH_OWNER || null;
 export async function owner() {
   if (ownerCache) return ownerCache;
-  const { stdout } = await exec("gh", ["api", "user", "--jq", ".login"], { capture: true, quiet: true });
-  ownerCache = stdout.trim();
+  const r = await ghRun(["api", "user", "--jq", ".login"], false);
+  if (r.code !== 0) throw new Error(`cannot reach GitHub: ${(r.stderr || "").trim().split("\n").pop()}`);
+  ownerCache = r.stdout.trim();
   return ownerCache;
 }
 
+const TRANSIENT = /timeout|timed out|connection reset|EOF|i\/o timeout|no such host|503|502|connection refused/i;
+
+/** Runs gh, retrying transient network failures (TLS/handshake timeouts, resets) with backoff. */
+async function ghRun(args, allowFail) {
+  let last;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 1500 * 2 ** (attempt - 1)));
+    const r = await exec("gh", args, { capture: true, quiet: true, allowFail: true, signal: AbortSignal.timeout(30_000) }).catch((e) => ({
+      code: 1,
+      stderr: e.name === "AbortError" ? "gh timed out after 30s" : e.message,
+    }));
+    if (r.code === 0 || !TRANSIENT.test(r.stderr || "")) return r;
+    last = r;
+  }
+  return last;
+}
+
 async function ghJson(args, { allowFail = false } = {}) {
-  const r = await exec("gh", args, { capture: true, quiet: true, allowFail, signal: AbortSignal.timeout(30_000) }).catch((e) => {
-    if (allowFail) return { code: 1, stderr: e.name === "AbortError" ? "gh timed out after 30s" : e.message };
-    throw e;
-  });
+  const r = await ghRun(args, allowFail);
+  if (r.code !== 0 && !allowFail) throw new Error(`gh ${args[0]} failed: ${(r.stderr || "").trim().split("\n").pop()}`);
   if (r.code !== 0) return { error: (r.stderr || "").trim().split("\n").pop() || `exit ${r.code}` };
   try {
     return JSON.parse(r.stdout || "null");
