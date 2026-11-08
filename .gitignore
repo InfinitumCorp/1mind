@@ -1,0 +1,8 @@
+node_modules/
+.env
+.1mind-token
+workspace/
+data/*.json
+data/*.jsonl
+!data/scope.example.json
+*.zip

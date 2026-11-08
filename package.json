@@ -1,0 +1,19 @@
+{
+  "name": "1mind",
+  "version": "0.1.0",
+  "private": true,
+  "description": "1MIND: Infinitum Corporation's internal command platform. Controls every Infinitum product. Not client facing.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

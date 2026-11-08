@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "1mind",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Users/1/Documents/1mind/src/server.js"],
+      "port": 4400
+    }
+  ]
+}
