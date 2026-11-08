@@ -32,9 +32,14 @@ Builds ran on the Windows operator workstation (Node 26.13, pnpm 10.28, Python 3
 
 Rules of engagement: Infinitum repositories only; no external domains in scope yet (none attested).
 
+Totals: 20 critical, 15 high, 21 medium, 12 low dependency findings; 35 low posture findings; 2 secret-sweep hits.
+
 - **Critical, infinitum-nexus:** `golang.org/x/crypto` below 0.52.0 in two Go manifests. Dependabot: 7 critical + 2 high advisories each (auth bypass via unenforced `@revoked`, agent key-constraint bypass, FIDO/U2F presence bypass, deadlocks/DoS). Fix: bump to `golang.org/x/crypto v0.52.0` and `go mod tidy`.
+- **Critical, 6 app-builder repos** (cumulus-exchange, cumulus-mail, odin-daemon, william-aaron-turner, vyral-london, prpgnd): `better-auth` 1.3.8-beta.3 to 1.7.6 is vulnerable; the authentication library in each app. Fix available: `npm i better-auth@latest`. The same six also carry `zod <4.6.6` (high).
+- **High, cumulus-mail:** additionally `joi` 18.0.0-18.3.0 and `mailauth` (fixes available).
+- **High, eidetic:** `zod` memory exhaustion on oversized constrained collections; patched in 4.6.6.
 - **High, architect:** npm audit flags `@anthropic-ai/sandbox-runtime` and `zod <4.6.6`, with no fix available upstream yet.
-- **Low, all 34 repos:** default branch has no branch protection (force-push and direct pushes allowed).
+- **Low, all 35 repos:** default branch has no branch protection (force-push and direct pushes allowed).
 - **Secret sweep:** 2 hits, both judged false positives: a fixture password in `infinitum-nexus/apps/veil/test/vpn-background.test.js` and a string inside a downloaded source document in `cos-workspace-backup`. No live keys, private keys or committed `.env` files found.
 
 Current, triageable findings live in the 1MIND Red Team tab; this file is a point-in-time snapshot.
