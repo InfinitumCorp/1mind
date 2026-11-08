@@ -44,6 +44,10 @@ Totals: 20 critical, 15 high, 21 medium, 12 low dependency findings; 35 low post
 
 Current, triageable findings live in the 1MIND Red Team tab; this file is a point-in-time snapshot.
 
+## Scope change (2026-11-09)
+
+william-aaron-turner, vyral-london and prpgnd were removed from 1MIND (`EXCLUDED` in `src/lib/products.js`). 1MIND no longer lists, pulls, builds or scans them; their build records, 18 findings and local clones were deleted. The repositories themselves are untouched on GitHub. The tables above are the original 2026-11-08 snapshot and still mention them.
+
 ## Incidents during the run
 
 - The workstation lost internet twice (all of GitHub, npm and Google timing out). 1MIND now retries transient GitHub failures with backoff.

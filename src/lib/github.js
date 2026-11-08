@@ -3,10 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { exec } from "./jobs.js";
 import { REPOS_DIR } from "../config.js";
-import { productFor } from "./products.js";
+import { productFor, EXCLUDED } from "./products.js";
 
 const REPO_NAME = /^[A-Za-z0-9._-]{1,100}$/;
-export const validRepo = (n) => typeof n === "string" && REPO_NAME.test(n) && n !== "." && n !== "..";
+export const validRepo = (n) => typeof n === "string" && REPO_NAME.test(n) && n !== "." && n !== ".." && !EXCLUDED.has(n);
 
 let ownerCache = process.env.ONEMIND_GH_OWNER || null;
 export async function owner() {
@@ -54,7 +54,7 @@ export async function listRepos({ fresh = false } = {}) {
   const fields = "name,description,primaryLanguage,updatedAt,pushedAt,url,isPrivate,isArchived,defaultBranchRef,diskUsage,visibility";
   const raw = await ghJson(["repo", "list", o, "--limit", "300", "--json", fields]);
   if (raw?.error) throw new Error(`gh repo list failed: ${raw.error}`);
-  const data = raw.map((r) => ({
+  const data = raw.filter((r) => !EXCLUDED.has(r.name)).map((r) => ({
     name: r.name,
     description: r.description || "",
     language: r.primaryLanguage?.name || null,

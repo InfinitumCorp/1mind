@@ -38,15 +38,16 @@ export const PRODUCTS = {
   "infinitum-defense-site": { product: "Infinitum Defense site", division: "web" },
   "infinitum-academy": { product: "Infinitum Academy", division: "web" },
   "williamaaronturner-redesign": { product: "WAT redesign", division: "web" },
-  "william-aaron-turner": { product: "William Aaron Turner", division: "web" },
   "capital-chronicles": { product: "Capital Chronicles", division: "web" },
-  "vyral-london": { product: "VYRAL London", division: "studios" },
-  prpgnd: { product: "PRPGND", division: "studios" },
   "aleph-pr": { product: "Aleph PR", division: "studios" },
   "ukraine-files-flyers": { product: "Ukraine Files", division: "studios" },
   InfinitumCorp: { product: "GitHub profile", division: "internal" },
   "cos-workspace-backup": { product: "COS workspace backup", division: "internal" },
 };
+
+// Repos 1MIND does not control: never listed, pulled, built or scanned.
+// Removing a name here brings it back on the next GitHub sync.
+export const EXCLUDED = new Set(["william-aaron-turner", "vyral-london", "prpgnd"]);
 
 export function productFor(repo) {
   return PRODUCTS[repo] ?? { product: repo, division: "unassigned" };
