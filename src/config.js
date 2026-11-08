@@ -10,7 +10,7 @@ if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
 
 export const PORT = Number(process.env.PORT || 4400);
 export const PREVIEW_PORT = Number(process.env.PREVIEW_PORT || 4401);
-export const DATA = path.join(ROOT, "data");
+export const DATA = process.env.ONEMIND_DATA ? path.resolve(process.env.ONEMIND_DATA) : path.join(ROOT, "data");
 export const WORKSPACE = path.join(ROOT, "workspace");
 export const REPOS_DIR = path.join(WORKSPACE, "repos");
 export const CONJURED_DIR = path.join(WORKSPACE, "conjured");
