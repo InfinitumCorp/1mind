@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DATA } from "../config.js";
+import { attachGeo } from "./geo.js";
 
 export function load(name, fallback) {
   const f = path.join(DATA, name + ".json");
@@ -43,7 +44,7 @@ const AUDIT = path.join(DATA, "audit.jsonl");
 
 /** Every state-changing action in 1MIND lands here. */
 export function audit(action, detail = {}) {
-  const entry = { ts: new Date().toISOString(), action, ...detail };
+  const entry = attachGeo({ ts: new Date().toISOString(), action, ...detail });
   const fd = fs.openSync(AUDIT, "a");
   try {
     fs.writeSync(fd, JSON.stringify(entry) + "\n");

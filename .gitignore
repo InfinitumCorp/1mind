@@ -5,4 +5,5 @@ workspace/
 data/*.json
 data/*.jsonl
 !data/scope.example.json
+data/geo/
 *.zip

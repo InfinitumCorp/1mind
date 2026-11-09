@@ -27,6 +27,10 @@ npm start          # http://127.0.0.1:4400
 
 Sign in with the token in `.1mind-token` (generated on first start) or set `ONEMIND_TOKEN` in `.env`. GitHub access uses the machine's `gh` login; no GitHub token is stored by 1MIND. For live Conjure put `ANTHROPIC_API_KEY` in `.env`; without it Conjure runs on its offline mock provider.
 
+## Geo datasets
+
+Optional cyber annotation for addresses and domain categories. Off unless `INFINITUM_GEO_ENABLED=1`. While it is off, audit entries, scan findings, and allow/deny decisions stay as they are. `npm run geo:fetch` downloads the pinned v2fly `geoip.dat` and `geosite.dat` (upstream asset `dlc.dat`) into `data/geo/` and stops if a file disagrees with the official `.sha256sum` or `geo.lock.json`. The binary datasets are gitignored. See `THIRD_PARTY_NOTICES`.
+
 ## Red team rules of engagement
 
 - Repository modules only touch Infinitum repos pulled into the workspace.

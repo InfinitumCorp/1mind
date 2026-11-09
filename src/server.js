@@ -6,6 +6,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { ROOT, PORT, PREVIEW_PORT, CONJURED_DIR, accessToken, hasClaude, makeProvider } from "./config.js";
 import { audit, readAudit } from "./lib/store.js";
+import { geoEnabled, loadGeo } from "./lib/geo.js";
 import { startJob, listJobs, getJob, cancelJob } from "./lib/jobs.js";
 import { listRepos, repoDetail, pullRepo, validRepo, owner, invalidateRepos } from "./lib/github.js";
 import { buildRepo, buildState } from "./lib/builder.js";
@@ -325,4 +326,13 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`1MIND online  http://127.0.0.1:${PORT}`);
   console.log(`access token  ${process.env.ONEMIND_TOKEN ? "(from ONEMIND_TOKEN)" : "in .1mind-token"}`);
   console.log(`conjure       ${hasClaude() ? "live Claude" : "offline mock (set ANTHROPIC_API_KEY in .env for live)"}`);
+  if (geoEnabled()) {
+    let loaded = false;
+    try {
+      loaded = Boolean(loadGeo());
+    } catch {
+      loaded = false;
+    }
+    console.log(loaded ? "geo           v2fly datasets" : "geo           enabled, datasets missing (npm run geo:fetch)");
+  }
 });

@@ -9,6 +9,7 @@ import tls from "node:tls";
 import crypto from "node:crypto";
 import { load, save, audit } from "./store.js";
 import { listRepos, repoDir, owner, api, validRepo } from "./github.js";
+import { describeSurface, geoEnabled } from "./geo.js";
 
 /* ---------- scope ---------- */
 
@@ -234,6 +235,24 @@ const EXPOSURES = [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Opt-in cyber annotation for an in-scope domain: country of each resolved
+ * address and category of the domain. Findings, severity, and allow/deny
+ * stay as they are. Returns null when INFINITUM_GEO_ENABLED is off.
+ */
+export function noteSurfaceGeo(domain, ips, log) {
+  if (!geoEnabled()) return null;
+  try {
+    const line = describeSurface(domain, ips);
+    if (line) log(line);
+    audit("surface.geo", { domain, ips });
+    return line;
+  } catch (e) {
+    log(`geo annotation failed: ${e.message}`, "stderr");
+    return null;
+  }
+}
+
 function certInfo(host, signal) {
   return new Promise((resolve) => {
     const sock = tls.connect({ host, port: 443, servername: host, timeout: 8000, rejectUnauthorized: false, signal }, () => {
@@ -264,6 +283,7 @@ export async function scanSurface(domain, { log, signal }) {
     const aaaa = await dns.resolve6(domain).catch(() => []);
     const cname = await dns.resolveCname(domain).catch(() => []);
     log(`dns A=${a.join(",") || "-"} AAAA=${aaaa.length} CNAME=${cname.join(",") || "-"}`);
+    noteSurfaceGeo(domain, [...a, ...aaaa], log);
     if (!a.length && !aaaa.length && !cname.length) out.push({ severity: "info", title: "Domain does not resolve" });
     const txt = await dns.resolveTxt(domain).catch(() => []);
     const flat = txt.map((t) => t.join(""));
