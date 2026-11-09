@@ -50,8 +50,23 @@ Any product that must work in Russia needs a mirror that is reachable from there
 | # | Item | Status |
 |---|---|---|
 | A1 | Merge infinitum-nexus #80–85: GitHub Actions bumps, `x/crypto` 0.58.0, `x/sys` | Green and clean; needs the user's OK |
-| A2 | cumulus-mail and cumulus-exchange: one branch per repo applying `better-auth`, `zod`, `seroval` and `fast-xml-parser`, with a regenerated `package-lock.json` | Dependabot's lockfiles miss `lru-cache@11.5.3`, so `npm ci` fails. This one branch replaces mail #13/15/16/17 and exchange #15/16/17/19 |
-| A3 | Apply the same `better-auth` upgrade to odin-daemon | Still on `~1.6.30` |
+| A2 | cumulus-mail and cumulus-exchange: one branch per repo applying `better-auth`, `zod`, `seroval` and `fast-xml-parser`, with a regenerated `package-lock.json` | See the notes after this table. This branch replaces mail #13/15/16/17 and exchange #15/16/17/19 |
+| A3 | Apply the same `better-auth` upgrade to odin-daemon | Still on `~1.6.30`; needs the same migration as A2 |
+
+**A2: what is done and what is not.** Dependabot's lockfiles miss `lru-cache@11.5.3`, so `npm ci` fails before any check runs. On branch `fix/security-bumps-lockfile`, the lockfile has been regenerated and is in sync. The branch is in worktrees under the session scratchpad and has not been pushed. Lint and tests pass; typecheck fails.
+
+The real blocker is that `better-auth` 1.7 is a sign-in migration, not just a version bump:
+- `genericOAuthClient` is gone. Generic providers now use the core `signIn.social({ provider })` and `/api/auth/callback/:id`.
+- `auth.api.signInWithOAuth2` no longer exists.
+- The callback path moves from `/api/auth/oauth2/callback/:id` to `/api/auth/callback/:id`, and the external auth broker only allows the old path.
+
+To migrate:
+1. Set each provider's `redirectURI` to the old path.
+2. Add a server rewrite from `/api/auth/oauth2/callback/:id` to `/api/auth/callback/:id`, or register the new path with the broker.
+3. Switch `client.ts` and `popup.server.ts` to `signIn.social` / `signInSocial`.
+4. Test a real sign-in. That needs the broker credentials, so it must be done by the user or in a preview deploy.
+
+Mail and Exchange share identical auth files, so one patch fits both.
 | A4 | Hold infinitum-nexus #86 (TypeScript 7), #87 (postal-mime 4) and #88 (@types/node 26) | Major versions that fail CI; need code changes |
 
 ### B. Build defects from the fleet report (all still open)
