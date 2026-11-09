@@ -41,9 +41,21 @@ export function save(name, value) {
 
 const AUDIT = path.join(DATA, "audit.jsonl");
 
+// Optional geo annotation. The default leaves every audit record unchanged.
+let annotate = () => null;
+export function setAuditAnnotator(fn) {
+  annotate = typeof fn === "function" ? fn : () => null;
+}
+
 /** Every state-changing action in 1MIND lands here. */
 export function audit(action, detail = {}) {
   const entry = { ts: new Date().toISOString(), action, ...detail };
+  try {
+    const geo = annotate(detail);
+    if (geo && typeof geo === "object") entry.geo = geo;
+  } catch (e) {
+    console.error(`[geo] annotation skipped: ${e.message}`);
+  }
   const fd = fs.openSync(AUDIT, "a");
   try {
     fs.writeSync(fd, JSON.stringify(entry) + "\n");

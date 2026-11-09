@@ -8,6 +8,7 @@ import dns from "node:dns/promises";
 import tls from "node:tls";
 import crypto from "node:crypto";
 import { load, save, audit } from "./store.js";
+import { noteGeo } from "./geo.js";
 import { listRepos, repoDir, owner, api, validRepo } from "./github.js";
 
 /* ---------- scope ---------- */
@@ -264,6 +265,7 @@ export async function scanSurface(domain, { log, signal }) {
     const aaaa = await dns.resolve6(domain).catch(() => []);
     const cname = await dns.resolveCname(domain).catch(() => []);
     log(`dns A=${a.join(",") || "-"} AAAA=${aaaa.length} CNAME=${cname.join(",") || "-"}`);
+    noteGeo(log, { domain, ips: [...a, ...aaaa] });
     if (!a.length && !aaaa.length && !cname.length) out.push({ severity: "info", title: "Domain does not resolve" });
     const txt = await dns.resolveTxt(domain).catch(() => []);
     const flat = txt.map((t) => t.join(""));

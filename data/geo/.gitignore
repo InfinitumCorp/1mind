@@ -1,0 +1,4 @@
+# Fetched dataset binaries stay on disk only. The lockfile is the committed record.
+*
+!lock.json
+!.gitignore
