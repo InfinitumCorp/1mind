@@ -10,6 +10,7 @@ import { startJob, listJobs, getJob, cancelJob } from "./lib/jobs.js";
 import { listRepos, repoDetail, pullRepo, validRepo, owner, invalidateRepos } from "./lib/github.js";
 import { buildRepo, buildState } from "./lib/builder.js";
 import { DIVISIONS } from "./lib/products.js";
+import { withNetworkRetry } from "./lib/net.js";
 import * as rt from "./lib/redteam.js";
 import { conjure, refine } from "./conjure/engine.js";
 import { zipDeliverable } from "./conjure/zip.js";
@@ -146,16 +147,18 @@ route("POST", "/api/repos/:name/build", async ({ name }) => {
 });
 route("POST", "/api/fleet/:op", async ({ op }) => {
   if (!["pull", "build", "deploy-check"].includes(op) && op !== "pull-build") throw httpError(400, "bad op");
-  const repos = (await listRepos()).filter((r) => !r.archived);
-  return startJob({ kind: `fleet-${op}`, title: `Fleet ${op} (${repos.length} repos)` }, async (ctx) => {
+  return startJob({ kind: `fleet-${op}`, title: `Fleet ${op}` }, async (ctx) => {
+    const net = { log: ctx.log, signal: ctx.signal };
+    const repos = (await withNetworkRetry(() => listRepos({ fresh: true }), { ...net, retries: 4 })).filter((r) => !r.archived);
+    ctx.log(`fleet ${op}: ${repos.length} repos`);
     const summary = { ok: [], partial: [], failed: [], skipped: [] };
     for (const r of repos) {
       if (ctx.signal.aborted) throw new Error("cancelled");
       ctx.log(`━━ ${r.name}`);
       try {
-        if (op === "pull" || op === "pull-build") await pullRepo(r.name, ctx);
+        if (op === "pull" || op === "pull-build") await withNetworkRetry(() => pullRepo(r.name, ctx), net);
         if (op === "build" || op === "pull-build") {
-          const b = await buildRepo(r.name, ctx);
+          const b = await withNetworkRetry(() => buildRepo(r.name, ctx), net);
           if (b.status === "skipped" || b.status === "partial") {
             summary[b.status].push(b.status === "skipped" ? `${r.name}: ${b.note}` : r.name);
             continue;
