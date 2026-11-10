@@ -391,7 +391,7 @@ async function openRepo(name) {
     <dt>Visibility</dt><dd>${esc(r?.visibility)}</dd>
     <dt>Branch</dt><dd class="mono">${esc(r?.defaultBranch)} ${d.protected ? chip("protected", "st-ok") : chip("unprotected", "sev low")}</dd>
     <dt>Workspace</dt><dd class="mono" style="font-size:11px">${r?.local.pulled ? esc(r.local.path) : "not pulled"}</dd>
-    <dt>Last build</dt><dd>${stChip(r?.build?.status)} <span class="mono faint">${r?.build ? `${ago(r.build.at)} ago · ${esc(r.build.toolchain)} ${r.build.head ? "@" + esc(r.build.head) : ""}` : ""}</span>${r?.build?.error ? `<div class="mono" style="color:var(--crit);font-size:11px;margin-top:4px">${esc(r.build.error)}</div>` : ""}</dd>
+    <dt>Last build</dt><dd>${stChip(r?.build?.status)} <span class="mono faint">${r?.build ? `${ago(r.build.at)} ago · ${esc(r.build.toolchain)} ${r.build.head ? "@" + esc(r.build.head) : ""}` : ""}</span>${r?.build?.error ? `<div class="mono" style="color:var(--crit);font-size:11px;margin-top:4px">${esc(r.build.error)}</div>` : ""}${r?.build?.note ? `<div class="mono faint" style="font-size:11px;margin-top:4px">${esc(r.build.note)}</div>` : ""}${(r?.build?.components || []).map((c) => `<div class="mono" style="font-size:11px;margin-top:4px">${stChip(c.status)} ${esc(c.path)} · ${esc(c.toolchain)}${(c.packages || []).filter((p) => p.status !== "ok").map((p) => ` · ${esc(p.path)} ${esc(p.status)}`).join("")}</div>`).join("")}${(r?.build?.warnings || []).map((w) => `<div class="mono" style="color:var(--med);font-size:11px;margin-top:4px">⚠ ${esc(w)}</div>`).join("")}</dd>
   </dl></section>
   <section><h3>Security alerts (GitHub)</h3><dl class="kv"><dt>Dependabot</dt><dd>${alertCell(d.alerts.dependabot)}</dd><dt>Secret scanning</dt><dd>${alertCell(d.alerts.secretScanning)}</dd><dt>Code scanning</dt><dd>${alertCell(d.alerts.codeScanning)}</dd><dt>1MIND findings</dt><dd>${fs.length ? fs.map((f) => sevChip(f.severity)).join(" ") : "0"}</dd></dl></section>
   <section><h3>CI runs</h3>${d.runs.length ? `<table><tbody>${d.runs.map((x) => `<tr><td>${stChip(x.conclusion || x.status)}</td><td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a></td><td class="mono dim">${esc(x.branch)}</td><td class="mono faint">${ago(x.date)}</td></tr>`).join("")}</tbody></table>` : `<div class="faint mono">no workflow runs</div>`}</section>
@@ -421,7 +421,7 @@ function viewPipeline() {
     <button class="btn ghost" data-fleet="build">Build all pulled</button>
     <span class="mono faint" style="font-size:11px;margin-left:8px">Repos clone into workspace/repos. Builds run each product's own toolchain (pnpm / npm / yarn / python / gradle).</span>
   </div></div>
-  <div class="panel" style="margin-top:12px"><header>Build matrix · ${ov.repos.length} products<span class="r">${["ok", "failed", "skipped"].map((s) => chip(`${s} ${ov.repos.filter((r) => r.build?.status === s).length}`, `st-${s}`)).join("")}</span></header>
+  <div class="panel" style="margin-top:12px"><header>Build matrix · ${ov.repos.length} products<span class="r">${["ok", "partial", "failed", "skipped"].map((s) => chip(`${s} ${ov.repos.filter((r) => r.build?.status === s).length}`, `st-${s}`)).join("")}</span></header>
     <div class="body"><div class="tiles">
     ${ov.repos.map((r) => {
       const st = running.has(r.name) ? "running" : r.build?.status || (r.local.pulled ? "pulled" : "remote");

@@ -124,6 +124,7 @@ label.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; c
 .st-failed, .st-cancelled { color: var(--crit); border-color: var(--crit); }
 .st-running { color: var(--fg); border-color: var(--fg); animation: pulse 1.2s infinite; }
 .st-skipped { color: var(--faint); }
+.st-partial { color: var(--med); border-color: var(--med); }
 @keyframes pulse { 50% { opacity: 0.4; } }
 
 /* ---------- graph ---------- */

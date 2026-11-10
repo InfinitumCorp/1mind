@@ -148,7 +148,7 @@ route("POST", "/api/fleet/:op", async ({ op }) => {
   if (!["pull", "build", "deploy-check"].includes(op) && op !== "pull-build") throw httpError(400, "bad op");
   const repos = (await listRepos()).filter((r) => !r.archived);
   return startJob({ kind: `fleet-${op}`, title: `Fleet ${op} (${repos.length} repos)` }, async (ctx) => {
-    const summary = { ok: [], failed: [], skipped: [] };
+    const summary = { ok: [], partial: [], failed: [], skipped: [] };
     for (const r of repos) {
       if (ctx.signal.aborted) throw new Error("cancelled");
       ctx.log(`━━ ${r.name}`);
@@ -156,8 +156,8 @@ route("POST", "/api/fleet/:op", async ({ op }) => {
         if (op === "pull" || op === "pull-build") await pullRepo(r.name, ctx);
         if (op === "build" || op === "pull-build") {
           const b = await buildRepo(r.name, ctx);
-          if (b.status === "skipped") {
-            summary.skipped.push(r.name);
+          if (b.status === "skipped" || b.status === "partial") {
+            summary[b.status].push(b.status === "skipped" ? `${r.name}: ${b.note}` : r.name);
             continue;
           }
         }
@@ -167,7 +167,7 @@ route("POST", "/api/fleet/:op", async ({ op }) => {
         summary.failed.push(r.name);
       }
     }
-    ctx.log(`done: ${summary.ok.length} ok, ${summary.failed.length} failed, ${summary.skipped.length} skipped`);
+    ctx.log(`done: ${summary.ok.length} ok, ${summary.partial.length} partial, ${summary.failed.length} failed, ${summary.skipped.length} skipped`);
     return summary;
   });
 });
