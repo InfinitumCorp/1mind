@@ -98,6 +98,12 @@ export async function pullRepo(name, { exec: run }) {
   const o = await owner();
   const dir = repoDir(name);
   if (fs.existsSync(path.join(dir, ".git"))) {
+    // Workspace clones are 1MIND-managed mirrors; anything dirty is a build byproduct.
+    // Stash it (recoverable with `git stash list`) so the fast-forward can proceed.
+    const { stdout: dirty } = await run("git", ["-C", dir, "status", "--porcelain"], { capture: true, quiet: true });
+    if (dirty.trim()) {
+      await run("git", ["-C", dir, "stash", "push", "--include-untracked", "-m", "1mind: build byproducts before pull"]);
+    }
     await run("git", ["-C", dir, "fetch", "--prune", "origin"]);
     await run("git", ["-C", dir, "pull", "--ff-only"]);
   } else {
