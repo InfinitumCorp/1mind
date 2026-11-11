@@ -27,6 +27,16 @@ npm start          # http://127.0.0.1:4400
 
 Sign in with Cumulus ID (id.cumuluscloud.app). People without one press **Create a Cumulus ID** on the same screen and come back signed in. Set `CID_OWNERS` (comma-separated CIDs, usernames or emails) to say who may enter; nobody can until it is set. `CID_CLIENT_ID` defaults to `1mind`, `CID_ISSUER` to `https://id.cumuluscloud.app` (point it at a mirror that loads in Russia), and `ONEMIND_PUBLIC_URL` to `http://127.0.0.1:<port>` (the redirect is `<that>/auth/cid/callback`, which must be on the issuer's allowlist). `.1mind-token` / `ONEMIND_TOKEN` is now only the server's cookie-signing secret; nobody types it. GitHub access uses the machine's `gh` login; no GitHub token is stored by 1MIND. For live Conjure put `ANTHROPIC_API_KEY` in `.env`; without it Conjure runs on its offline mock provider.
 
+## OpenClaw
+
+The **OPENCLAW** view (key 6) runs an [OpenClaw](https://github.com/openclaw/openclaw) agent gateway inside 1MIND and gives operators a console to talk to its agents.
+
+- **Install** puts the pinned runtime (openclaw 2026.11.3, MIT, ~275 MB) in `workspace/openclaw`. It is not a 1MIND dependency, so nothing is downloaded until someone presses the button.
+- **Start gateway** writes `workspace/openclaw/state/openclaw.json` and runs the gateway bound to loopback on `OPENCLAW_PORT` (18789), with token auth (a random token kept in `state/gateway-token`, or `OPENCLAW_GATEWAY_TOKEN`) and the OpenAI-compatible `/v1/chat/completions` endpoint switched on. The gateway stops when 1MIND stops.
+- The agent model is `OPENCLAW_MODEL`, default `anthropic/<CONJURE_MODEL>`; it uses the same `ANTHROPIC_API_KEY`.
+- To use a gateway you already run, set `OPENCLAW_URL` (and `OPENCLAW_GATEWAY_TOKEN`). 1MIND refuses public addresses: OpenClaw's chat endpoint is full operator access to the gateway and must stay on loopback or a private network (10/8, 172.16/12, 192.168/16, 100.64/10, `*.ts.net`).
+- Each turn keeps an OpenClaw session per thread. Install, start, stop and every chat turn are audited (agent and message length, never the content). Gateway output is shown with the token and API keys redacted.
+
 ## Red team rules of engagement
 
 - Repository modules only touch Infinitum repos pulled into the workspace.

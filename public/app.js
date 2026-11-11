@@ -85,7 +85,7 @@ $("#theme").onclick = () => {
 
 document.addEventListener("keydown", (e) => {
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
-  const map = { 1: "overview", 2: "products", 3: "pipeline", 4: "redteam", 5: "conjure", 6: "jobs", 7: "audit" };
+  const map = { 1: "overview", 2: "products", 3: "pipeline", 4: "redteam", 5: "conjure", 6: "openclaw", 7: "jobs", 8: "audit" };
   if (map[e.key]) location.hash = map[e.key];
   if (e.key === "Escape") closeDrawer();
 });
@@ -547,6 +547,106 @@ async function viewConjure() {
   }));
 }
 
+/* ---------- OpenClaw ---------- */
+
+// Transcript and draft live here so the 2.5 s poll can re-render without losing them.
+state.oc = { agent: "openclaw/default", thread: null, msgs: [], draft: "", busy: false };
+const newThread = () => "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+async function viewOpenclaw() {
+  const o = await api("/api/openclaw");
+  if (o.error) {
+    main.innerHTML = `<h1 class="view">OpenClaw</h1><div class="banner"><b>CONFIG</b><span>${esc(o.error)}</span></div>`;
+    return;
+  }
+  const oc = state.oc;
+  if (!oc.thread) oc.thread = newThread();
+  const s = o.settings;
+  const managed = s.mode === "managed";
+  const g = o.gateway;
+  const up = o.health.live;
+  const agentOpts = [...new Set(["openclaw/default", ...o.agents])];
+  if (!agentOpts.includes(oc.agent)) oc.agent = "openclaw/default";
+  const gwState = up ? (o.health.ready ? chip("ready", "st-ok") : chip("starting", "st-running")) : g.running ? chip("starting", "st-running") : chip("stopped", "st-skipped");
+  const msgs = oc.msgs.length
+    ? oc.msgs.map((m) => `<div class="oc-msg ${m.role}"><div class="who mono">${m.role === "user" ? "OPERATOR" : m.role === "error" ? "ERROR" : esc(m.model || "OPENCLAW")} · ${esc(m.at.slice(11, 19))}</div><div class="txt">${esc(m.text)}</div></div>`).join("")
+    : `<div class="empty">${up ? "GATEWAY READY · SEND AN INSTRUCTION" : "START THE GATEWAY TO TALK TO OPENCLAW"}</div>`;
+  main.innerHTML = `
+  <h1 class="view">OpenClaw</h1>
+  <div class="view-sub up">Agent gateway built into 1MIND · ${managed ? "managed by 1MIND, loopback only" : "external gateway on a private address"} · ${o.live ? "Claude key present" : "no ANTHROPIC_API_KEY: the agent cannot answer until one is set in .env"}</div>
+  <div class="grid g-main" style="grid-template-columns:minmax(0,1fr) minmax(0,1.7fr)">
+    <div style="display:grid;gap:12px;align-content:start">
+      <div class="panel"><header>Gateway<span class="r">${gwState}</span></header><div class="body">
+        <dl class="oc-kv">
+          <dt>Endpoint</dt><dd class="mono">${esc(s.url)}</dd>
+          <dt>Runtime</dt><dd class="mono">${managed ? (o.installed ? "openclaw " + esc(o.installed) : "not installed") : "external"}${managed && o.installed && o.installed !== s.version ? " " + chip("pinned " + s.version, "sev medium") : ""}</dd>
+          <dt>Model</dt><dd class="mono">${esc(s.model)}</dd>
+          <dt>Process</dt><dd class="mono">${g.running ? "pid " + esc(g.pid) + " · up " + ago(g.startedAt) : g.exitedAt ? "exited " + esc(g.exitCode) + " · " + ago(g.exitedAt) + " ago" : "—"}</dd>
+          <dt>Health</dt><dd class="mono">healthz ${esc(o.health.liveStatus ?? "—")} · readyz ${esc(o.health.readyStatus ?? "—")}</dd>
+          <dt>Agents</dt><dd class="mono">${o.agents.length ? o.agents.map(esc).join(", ") : o.agentsError ? `<span style="color:var(--crit)">${esc(o.agentsError)}</span>` : "—"}</dd>
+        </dl>
+        ${managed ? `<div class="row" style="margin-top:12px">
+          ${!o.installed ? `<button class="btn" id="oc-install" ${o.installing ? "disabled" : ""}>${o.installing ? "Installing…" : "Install OpenClaw " + esc(s.version)}</button>` : ""}
+          ${o.installed && !g.running ? `<button class="btn" id="oc-start">Start gateway</button>` : ""}
+          ${g.running ? `<button class="btn danger sm" id="oc-stop">Stop gateway</button>` : ""}
+          <button class="btn ghost sm" id="oc-refresh">Refresh</button>
+        </div>` : ""}
+      </div></div>
+      <div class="panel"><header>Gateway log</header><div class="body flush scroll" style="max-height:38vh"><pre class="oc-log" id="oc-log">…</pre></div></div>
+    </div>
+    <div class="panel oc-chat"><header>Operator console<span class="r">
+      <select class="f sm" id="oc-agent">${agentOpts.map((a) => `<option ${a === oc.agent ? "selected" : ""}>${esc(a)}</option>`).join("")}</select>
+      <button class="btn ghost sm" id="oc-new" title="Start a new OpenClaw session">New thread</button></span></header>
+      <div class="body oc-msgs" id="oc-msgs">${msgs}${oc.busy ? `<div class="oc-msg assistant"><div class="who mono">OPENCLAW</div><div class="txt faint">working…</div></div>` : ""}</div>
+      <div class="body" style="border-top:1px solid var(--line);display:grid;gap:8px">
+        <textarea class="f" id="oc-input" rows="3" maxlength="20000" placeholder="Instruction for the agent · Ctrl+Enter to send" ${up && !oc.busy ? "" : "disabled"}>${esc(oc.draft)}</textarea>
+        <div class="row"><button class="btn" id="oc-send" ${up && !oc.busy ? "" : "disabled"}>Send</button><span class="mono faint" style="font-size:11px">thread ${esc(oc.thread)} · each turn is audited (agent and length, not content)</span></div>
+      </div>
+    </div>
+  </div>`;
+  const box = $("#oc-msgs");
+  box.scrollTop = box.scrollHeight;
+  api("/api/openclaw/logs")
+    .then((lines) => {
+      const el = $("#oc-log");
+      if (!el) return;
+      el.textContent = lines.map((x) => x.t.slice(11, 19) + "  " + x.l).join("\n") || "no gateway output yet";
+      el.parentElement.scrollTop = el.parentElement.scrollHeight;
+    })
+    .catch(() => {});
+  const gw = async (op) => {
+    await act(() => api(`/api/openclaw/gateway/${op}`, { method: "POST", body: {} }), op === "start" ? "Gateway starting" : "Gateway stopped");
+    setTimeout(() => state.view === "openclaw" && viewOpenclaw(), op === "start" ? 3000 : 600);
+  };
+  if ($("#oc-install")) $("#oc-install").onclick = async () => { await startJob("/api/openclaw/install", {}, "OpenClaw install"); viewOpenclaw(); };
+  if ($("#oc-start")) $("#oc-start").onclick = () => gw("start");
+  if ($("#oc-stop")) $("#oc-stop").onclick = () => gw("stop");
+  if ($("#oc-refresh")) $("#oc-refresh").onclick = () => viewOpenclaw();
+  $("#oc-agent").onchange = (e) => (oc.agent = e.target.value);
+  $("#oc-new").onclick = () => { oc.thread = newThread(); oc.msgs = []; viewOpenclaw(); };
+  const input = $("#oc-input");
+  input.oninput = () => (oc.draft = input.value);
+  const send = async () => {
+    const message = input.value.trim();
+    if (!message || oc.busy) return;
+    oc.msgs.push({ role: "user", text: message, at: new Date().toISOString() });
+    oc.draft = "";
+    oc.busy = true;
+    viewOpenclaw();
+    try {
+      const r = await api("/api/openclaw/chat", { method: "POST", body: { agent: oc.agent, message, thread: oc.thread } });
+      oc.msgs.push({ role: "assistant", text: r.reply, model: r.model, at: new Date().toISOString() });
+    } catch (e) {
+      oc.msgs.push({ role: "error", text: e.message, at: new Date().toISOString() });
+    } finally {
+      oc.busy = false;
+      if (state.view === "openclaw") viewOpenclaw();
+    }
+  };
+  $("#oc-send").onclick = send;
+  input.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(); };
+}
+
 /* ---------- jobs ---------- */
 
 async function viewJobs() {
@@ -604,7 +704,7 @@ async function viewAudit() {
 
 /* ---------- router / refresh ---------- */
 
-const VIEWS = { overview: viewOverview, products: viewProducts, pipeline: viewPipeline, redteam: viewRedteam, conjure: viewConjure, jobs: viewJobs, audit: viewAudit };
+const VIEWS = { overview: viewOverview, products: viewProducts, pipeline: viewPipeline, redteam: viewRedteam, conjure: viewConjure, openclaw: viewOpenclaw, jobs: viewJobs, audit: viewAudit };
 
 async function refresh() {
   state.ov = await api("/api/overview");
@@ -642,7 +742,7 @@ setInterval(async () => {
   }
   const sig = state.ov.jobs.map((j) => j.id + j.status).join();
   if (state.view === "jobs") return paintJob().then(() => sig !== lastSig && viewJobs()).finally(() => (lastSig = sig));
-  if (sig !== lastSig && ["pipeline", "products", "conjure"].includes(state.view) && !document.activeElement?.matches("input,textarea,select")) render();
+  if (sig !== lastSig && ["pipeline", "products", "conjure", "openclaw"].includes(state.view) && !document.activeElement?.matches("input,textarea,select")) render();
   if (sig !== lastSig) state.findings = (await api("/api/redteam")).findings;
   lastSig = sig;
 }, 2500);

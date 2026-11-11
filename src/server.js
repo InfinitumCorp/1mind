@@ -15,6 +15,7 @@ import * as rt from "./lib/redteam.js";
 import { conjure, refine } from "./conjure/engine.js";
 import { cidConfig, startSignIn, finishSignIn, clearPending, isOwner } from "./lib/cid.js";
 import { zipDeliverable } from "./conjure/zip.js";
+import * as oc from "./lib/openclaw.js";
 
 // Server-side signing secret for session cookies. People never type it: they sign in with Cumulus ID.
 const SECRET = accessToken();
@@ -259,6 +260,62 @@ route("POST", "/api/conjure/refine", async (_, b) => {
   if (listJobs().some((j) => j.kind.startsWith("conjure") && j.status === "running")) throw httpError(409, "a Conjure run is already in progress");
   const provider = makeProvider({ mock: b.mock === true });
   return startJob({ kind: "conjure-refine", title: `Refine · ${b.dir}`, target: b.dir }, (ctx) => refine({ dir, change, provider, signal: ctx.signal, onEvent: conjureEvents(ctx.log) }).then(() => ({ dir: b.dir })));
+});
+
+/* ---------- OpenClaw ---------- */
+
+route("GET", "/api/openclaw", async () => {
+  let s;
+  try {
+    s = oc.settings();
+  } catch (e) {
+    return { error: e.message };
+  }
+  const h = await oc.health();
+  let agents = [];
+  let agentsError = null;
+  if (h.live) {
+    try {
+      agents = await oc.agents();
+    } catch (e) {
+      agentsError = e.message;
+    }
+  }
+  return {
+    settings: s,
+    installed: oc.installedVersion(),
+    gateway: oc.gatewayProcess(),
+    health: h,
+    agents,
+    agentsError,
+    live: hasClaude(),
+    installing: listJobs().some((j) => j.kind === "openclaw-install" && j.status === "running"),
+  };
+});
+route("GET", "/api/openclaw/logs", async () => oc.gatewayLogs(200));
+route("POST", "/api/openclaw/install", async () => {
+  if (listJobs().some((j) => j.kind === "openclaw-install" && j.status === "running")) throw httpError(409, "OpenClaw install already running");
+  audit("openclaw.install", { version: oc.OPENCLAW_VERSION });
+  return startJob({ kind: "openclaw-install", title: `Install OpenClaw ${oc.OPENCLAW_VERSION}` }, (ctx) => oc.install(ctx));
+});
+route("POST", "/api/openclaw/gateway/:op", async ({ op }) => {
+  if (op !== "start" && op !== "stop") throw httpError(400, "op must be start or stop");
+  try {
+    const g = op === "start" ? oc.startGateway() : oc.stopGateway();
+    audit(`openclaw.gateway.${op}`, { pid: g.pid });
+    return g;
+  } catch (e) {
+    throw httpError(409, e.message);
+  }
+});
+route("POST", "/api/openclaw/chat", async (_, b) => {
+  try {
+    const r = await oc.chat({ agent: b.agent || undefined, message: b.message, thread: b.thread || undefined });
+    audit("openclaw.chat", { agent: b.agent || "openclaw/default", chars: String(b.message || "").length });
+    return r;
+  } catch (e) {
+    throw httpError(e.name === "TimeoutError" ? 504 : 502, e.message);
+  }
 });
 
 route("GET", "/api/audit", async () => readAudit(500));
