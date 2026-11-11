@@ -23,8 +23,8 @@ Workstation: Windows, Node 26.13, pnpm 10.28, Python 3.14, Go 1.27, Rust (window
 
 | Result | Count | Repos |
 |---|---|---|
-| Built | 25 | 1mind, aether, architect, argus-military-reference, argus-odin-reference, capital-chronicles, Conjure, cumulus-exchange, cumulus-mail, eidetic, eon, fabric, firmament-launch, infinitum-academy, infinitum-corporation-site, infinitum-defense-site, infinitum-nexus, infinitum-revenue, odin, odin-daemon, scalvs-ai, scalvs-ru, veil-vpn, williamaaronturner-redesign, zerkalo |
-| Failed | 2 | aleph-pr, hrvst |
+| Built | 27 | 1mind, aether, aleph-pr, architect, argus-military-reference, argus-odin-reference, capital-chronicles, Conjure, cumulus-exchange, cumulus-mail, eidetic, eon, fabric, firmament-launch, hrvst, infinitum-academy, infinitum-corporation-site, infinitum-defense-site, infinitum-nexus, infinitum-revenue, odin, odin-daemon, scalvs-ai, scalvs-ru, veil-vpn, williamaaronturner-redesign, zerkalo |
+| Failed | 0 |  |
 | Nothing to build | 7 | cos-workspace-backup (content), flower-pollen (empty), InfinitumCorp (docs), RULES (docs), scalvs-ai-metatron-bot (docs), ukraine-files-flyers (content), veil-phase1 (scripts) |
 
 Previous run (2026-11-08, 34 repos incl. 3 since excluded): 15 built, 10 failed, 9 nothing to build.
@@ -38,24 +38,18 @@ Previous run (2026-11-08, 34 repos incl. 3 since excluded): 15 built, 10 failed,
 | argus-odin-reference | no requirements file; compile check only |
 | cumulus-exchange | skipped side-effect step "npm run db:migrate" |
 | cumulus-mail | skipped side-effect step "npm run db:migrate" |
-| infinitum-academy | typecheck skipped: it calls tsc but typescript is not installed |
 
-Repos with no `build` script get install (and typecheck, when present) only: 1mind, aether, Conjure, eon, fabric, firmament-launch, odin.
+Repos with no `build` script get install (and typecheck, when present) only: 1mind, aether, Conjure, eon, fabric, firmament-launch, hrvst, odin.
 
-### Failures
-
-| Repo | Error |
-|---|---|
-| aleph-pr | `node exited with code 1: } /  / Node.js v26.13.0` |
-| hrvst | `typecheck: npm exited with code 2` |
-
-## Real defects (fix in the product repo)
+## Repo defects found and fixed (merged 2026-11-11)
 
 | Repo | Problem | Fix |
 |---|---|---|
-| aleph-pr | `build` runs `node scripts/with-app-env.mjs`, but `scripts/` is not committed. The site is a static `index.html`; the `package.json` is leftover app-builder scaffolding. | Delete the stale `package.json`/lockfile, or commit `scripts/`. |
-| hrvst | Typecheck fails with TS5097: imports end in `.ts` but `tsconfig.json` lacks `allowImportingTsExtensions`. | Add `"allowImportingTsExtensions": true` (with `"noEmit": true`). |
-| infinitum-academy | Builds, but `typecheck` calls `tsc` and `typescript` is not a dependency (now a warning, not a failure). | `npm i -D typescript`. |
+| aleph-pr | Static site still carried TanStack app-builder scaffolding; `build` called the never-committed `scripts/with-app-env.mjs`, then `db:migrate`. | [InfinitumCorp/aleph-pr#2](https://github.com/InfinitumCorp/aleph-pr/pull/2): `vercel.json` serves the files as-is; scaffolding removed. |
+| hrvst | Typecheck failed with 7× TS5097: Node type-stripping needs `.ts` import paths. | [InfinitumCorp/hrvst#4](https://github.com/InfinitumCorp/hrvst/pull/4): `allowImportingTsExtensions` + `erasableSyntaxOnly`. Typecheck 0 errors, tests 10/10. |
+| infinitum-academy | No TypeScript in the repo, but a leftover `"typecheck": "tsc --noEmit"` made `whop apps deploy` fail at its typecheck step. | [InfinitumCorp/infinitum-academy#2](https://github.com/InfinitumCorp/infinitum-academy/pull/2): script removed; the Whop CLI skips the step when it is absent. |
+
+Security follow-up: the critical `golang.org/x/crypto` advisories in infinitum-nexus are resolved. #72 was superseded by #76, #81 and #83, and both VEIL Go modules are on v0.58.0.
 
 ## New repositories seen
 
