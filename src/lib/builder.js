@@ -5,6 +5,7 @@
 // "skipped" always says why. A build never runs side-effect steps (migrations, deploys, publishes).
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { repoDir } from "./github.js";
 import { load, save } from "./store.js";
 
@@ -45,7 +46,10 @@ export function detect(dir, { loose = true } = {}) {
     const android = files.some((f) => /com\.android/.test(fs.readFileSync(f, "utf8")));
     return { kind: "gradle", android };
   }
-  if (has(dir, "Cargo.toml")) return { kind: "rust" };
+  if (has(dir, "Cargo.toml")) {
+    const toml = fs.readFileSync(path.join(dir, "Cargo.toml"), "utf8");
+    return { kind: "rust", wasm: /wasm-bindgen/.test(toml) && /cdylib/.test(toml) };
+  }
   if (has(dir, "go.mod")) return { kind: "go" };
   if (has(dir, "pyproject.toml") || has(dir, "requirements.txt") || has(dir, "setup.py")) return { kind: "python" };
   const entries = loose ? safeList(dir) : [];
@@ -161,6 +165,22 @@ export function buildEnv(env = process.env, platform = process.platform) {
   return { [key]: `${cur};${gitBin}` };
 }
 
+const once = (fn) => {
+  let v;
+  return () => (v === undefined ? (v = fn()) : v);
+};
+const tryRun = (cmd, args) => {
+  try {
+    return execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+  } catch {
+    return "";
+  }
+};
+const rustTargets = once(() => tryRun("rustup", ["target", "list", "--installed"]).split(/\r?\n/).filter(Boolean));
+const onPath = (exe) => (process.env.PATH || process.env.Path || "").split(path.delimiter).some((d) => d && fs.existsSync(path.join(d, exe)));
+/** True on a windows-gnu Rust host that has no MinGW dlltool to link raw-dylib imports. */
+export const gnuWithoutDlltool = once(() => process.platform === "win32" && /host: \S*windows-gnu/.test(tryRun("rustc", ["-vV"])) && !onPath("dlltool.exe"));
+
 /** Builds one component; returns { status, warnings, error, packages? }. */
 async function buildComponent(dir, t, { exec, log, env }) {
   const warnings = [];
@@ -179,17 +199,24 @@ async function buildComponent(dir, t, { exec, log, env }) {
       else await run("./gradlew", [task]);
       return { status: "ok", warnings };
     }
-    case "rust":
-      try {
-        await run("cargo", ["build", "--release"]);
-      } catch (e) {
-        // windows-gnu without MinGW cannot link raw-dylib crates (windows-sys); that is the
-        // workstation, not the product. Type-check instead and say so.
-        if (!/dlltool/.test(e.message)) throw e;
-        await run("cargo", ["check", "--release"]);
-        warnings.push("type-checked only (cargo check): linking needs MinGW dlltool, which this workstation's windows-gnu toolchain lacks");
+    case "rust": {
+      if (t.wasm) {
+        // wasm-bindgen crates target the browser; the host toolchain is irrelevant. The
+        // wasm-bindgen CLI step is not run: it rewrites committed output in the repo.
+        if (!rustTargets().includes("wasm32-unknown-unknown")) throw new Error("wasm crate needs: rustup target add wasm32-unknown-unknown");
+        await run("cargo", ["build", "--release", "--target", "wasm32-unknown-unknown"]);
+        return { status: "ok", warnings };
       }
+      if (gnuWithoutDlltool()) {
+        // windows-gnu without MinGW cannot link raw-dylib crates (windows-sys): a workstation
+        // limitation, not a product defect. Type-check instead and say so.
+        await run("cargo", ["check", "--release"]);
+        warnings.push("type-checked only (cargo check): linking needs MinGW dlltool, which this workstation's windows-gnu Rust toolchain lacks");
+        return { status: "ok", warnings };
+      }
+      await run("cargo", ["build", "--release"]);
       return { status: "ok", warnings };
+    }
     case "go":
       await run("go", ["build", "./..."]);
       return { status: "ok", warnings };

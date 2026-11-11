@@ -111,3 +111,9 @@ test("empty repos and loose-script repos get their own reason", () => {
   assert.equal(s.kind, "scripts");
   assert.match(s.note, /loose scripts/);
 });
+
+test("wasm-bindgen cdylib crates are detected for a wasm build", () => {
+  const t = detect(tree({ "Cargo.toml": '[lib]\ncrate-type = ["cdylib"]\n[dependencies]\nwasm-bindgen = "=0.2.100"\n' }));
+  assert.deepEqual(t, { kind: "rust", wasm: true });
+  assert.equal(detect(tree({ "Cargo.toml": "[package]\nname='x'\n" })).wasm, false);
+});
