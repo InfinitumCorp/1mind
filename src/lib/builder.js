@@ -24,7 +24,8 @@ const PMS = new Set(["npm", "pnpm", "yarn", "npx"]);
 const SYSTEM = new Set(["node", "bash", "sh", "python", "python3", "go", "cargo", "git", "java", "cmd", "npm", "pnpm", "yarn", "npx", "corepack"]);
 const BIN_PKG = { tsc: "typescript", "vue-tsc": "vue-tsc", next: "next", astro: "astro", vite: "vite", tsx: "tsx", esbuild: "esbuild" };
 const DOC_EXT = new Set(["md", "mdx", "txt", "rst", "pdf", "docx", "doc", "xlsx", "csv", "sql"]);
-const MEDIA_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "mp4", "mov", "psd", "ai", "pdf", "html", "json", "yml", "yaml", "txt", "md", "css"]);
+const SCRIPT_EXT = new Set(["js", "mjs", "cjs", "ts", "py", "sh", "ps1", "patch", "diff"]);
+const MEDIA_EXT =new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "mp4", "mov", "psd", "ai", "pdf", "html", "json", "yml", "yaml", "txt", "md", "css"]);
 
 /** The toolchain at exactly `dir`, or null. */
 export function detect(dir, { loose = true } = {}) {
@@ -84,8 +85,11 @@ export function classifyFiles(files) {
   const n = ext.length || 1;
   const docs = ext.filter((e) => DOC_EXT.has(e)).length;
   const media = ext.filter((e) => MEDIA_EXT.has(e)).length;
+  const scripts = ext.filter((e) => SCRIPT_EXT.has(e)).length;
+  if (!files.length) return { kind: "empty", note: "empty repository (no files committed)" };
   if (docs / n >= 0.6) return { kind: "docs", note: `documentation only (${docs}/${ext.length} files are docs)` };
   if (media / n >= 0.6) return { kind: "content", note: `content/assets only (${media}/${ext.length} files are media, pages or data)` };
+  if (scripts / n >= 0.5) return { kind: "scripts", note: `loose scripts and patches, no package manifest (${scripts}/${ext.length} files are scripts)` };
   return { kind: "unknown", note: `no recognised manifest (${ext.length} files)` };
 }
 
@@ -170,12 +174,21 @@ async function buildComponent(dir, t, { exec, log, env }) {
       return { status: "ok", warnings };
     case "gradle": {
       const task = t.android ? "assembleDebug" : "assemble";
-      if (process.platform === "win32") await run("cmd", ["/c", "gradlew.bat", task]);
+      // Explicit .\ path: cmd ignores the current directory when NoDefaultCurrentDirectoryInExePath is set.
+      if (process.platform === "win32") await run("cmd", ["/c", ".\\gradlew.bat", task]);
       else await run("./gradlew", [task]);
       return { status: "ok", warnings };
     }
     case "rust":
-      await run("cargo", ["build", "--release"]);
+      try {
+        await run("cargo", ["build", "--release"]);
+      } catch (e) {
+        // windows-gnu without MinGW cannot link raw-dylib crates (windows-sys); that is the
+        // workstation, not the product. Type-check instead and say so.
+        if (!/dlltool/.test(e.message)) throw e;
+        await run("cargo", ["check", "--release"]);
+        warnings.push("type-checked only (cargo check): linking needs MinGW dlltool, which this workstation's windows-gnu toolchain lacks");
+      }
       return { status: "ok", warnings };
     case "go":
       await run("go", ["build", "./..."]);

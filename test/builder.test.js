@@ -104,3 +104,10 @@ test("loose .py scripts and static pages in subfolders do not make a repo builda
   assert.equal(p.mode, "none");
   assert.match(p.note, /only/);
 });
+
+test("empty repos and loose-script repos get their own reason", () => {
+  assert.equal(classifyFiles([]).kind, "empty");
+  const s = classifyFiles(["a.mjs", "b.py", "c.patch", "README.md"]);
+  assert.equal(s.kind, "scripts");
+  assert.match(s.note, /loose scripts/);
+});
