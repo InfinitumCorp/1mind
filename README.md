@@ -27,6 +27,17 @@ npm start          # http://127.0.0.1:4400
 
 Sign in with Cumulus ID (id.cumuluscloud.app). People without one press **Create a Cumulus ID** on the same screen and come back signed in. Set `CID_OWNERS` (comma-separated CIDs, usernames or emails) to say who may enter; nobody can until it is set. `CID_CLIENT_ID` defaults to `1mind`, `CID_ISSUER` to `https://id.cumuluscloud.app` (point it at a mirror that loads in Russia), and `ONEMIND_PUBLIC_URL` to `http://127.0.0.1:<port>` (the redirect is `<that>/auth/cid/callback`, which must be on the issuer's allowlist). `.1mind-token` / `ONEMIND_TOKEN` is now only the server's cookie-signing secret; nobody types it. GitHub access uses the machine's `gh` login; no GitHub token is stored by 1MIND. For live Conjure put `ANTHROPIC_API_KEY` in `.env`; without it Conjure runs on its offline mock provider.
 
+## Deploy (Russia)
+
+1MIND runs on the Yandex Cloud VM `conjure-russia` at https://1mind-ru.infinitumcorporation.ai, with Conjure deliverables on https://1mind-ru-preview.infinitumcorporation.ai. Both hosts are DNS-only (grey-cloud) A records pointing at the VM, so they load in Russia without a VPN and everywhere else too. Config is in `deploy/russia/`:
+
+- `install.sh`: run on the VM with `sudo bash deploy/russia/install.sh <branch>`. It is idempotent: it creates the `onemind` user, installs git, gh and python3, clones to `/opt/1mind`, runs `npm ci`, creates `/etc/1mind/env` with a random cookie secret, installs the systemd unit, gets a Let's Encrypt certificate (webroot `/var/www/acme`) and enables nginx.
+- `1mind.service`: sandboxed systemd unit, bound to 127.0.0.1:4400 (preview on :4401). It trusts `X-Real-IP` only from the local nginx.
+- `nginx-1mind.conf` + `1mind-proxy.conf`: TLS, HSTS, noindex, and rate limits on `/auth/` and the API. The preview host is GET-only.
+- `env.example`: the template for `/etc/1mind/env`. Set `CID_OWNERS` there; never commit the real file, and never add `ANTHROPIC_API_KEY` on a server in Russia (Conjure runs on its mock).
+
+After the first install, sign GitHub in once as the service user: `sudo -u onemind -H gh auth login`, then `sudo systemctl restart 1mind`. Sign-in needs `https://1mind-ru.infinitumcorporation.ai` on the `1mind` client's origins in infinitum-nexus `packages/cid/src/id-clients.ts`.
+
 ## Red team rules of engagement
 
 - Repository modules only touch Infinitum repos pulled into the workspace.
