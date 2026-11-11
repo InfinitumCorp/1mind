@@ -20,6 +20,8 @@ export class Workspace {
     if (typeof relPath !== "string" || relPath.trim() === "") {
       throw new WorkspaceError("path must be a non-empty string");
     }
+    // Reject Windows separators on every host so a model path cannot hide as a literal filename.
+    if (relPath.includes("\\")) throw new WorkspaceError(`path escapes the workspace: ${relPath}`);
     const target = path.resolve(this.root, relPath);
     const rel = path.relative(this.root, target);
     if (rel === "" || rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) {

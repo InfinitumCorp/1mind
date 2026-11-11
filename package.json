@@ -7,7 +7,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --import ./test/env.js --test test/"
+    "geo:fetch": "node scripts/fetch-geo.mjs",
+    "test": "node --import ./test/env.js --test test/**/*.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

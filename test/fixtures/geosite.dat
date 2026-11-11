@@ -1,0 +1,12 @@
+
+
+adsads.example
+cn
+
+cnexact.cn.example
+
+keyword	tracker
+
+re^re\.example$
+
+skip(

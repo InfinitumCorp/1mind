@@ -27,6 +27,16 @@ npm start          # http://127.0.0.1:4400
 
 Sign in with Cumulus ID (id.cumuluscloud.app). People without one press **Create a Cumulus ID** on the same screen and come back signed in. Set `CID_OWNERS` (comma-separated CIDs, usernames or emails) to say who may enter; nobody can until it is set. `CID_CLIENT_ID` defaults to `1mind`, `CID_ISSUER` to `https://id.cumuluscloud.app` (point it at a mirror that loads in Russia), and `ONEMIND_PUBLIC_URL` to `http://127.0.0.1:<port>` (the redirect is `<that>/auth/cid/callback`, which must be on the issuer's allowlist). `.1mind-token` / `ONEMIND_TOKEN` is now only the server's cookie-signing secret; nobody types it. GitHub access uses the machine's `gh` login; no GitHub token is stored by 1MIND. For live Conjure put `ANTHROPIC_API_KEY` in `.env`; without it Conjure runs on its offline mock provider.
 
+## Geo routing
+
+Off by default. Policy decisions, audit lines, and red-team scan logs stay the same until an operator turns it on. The switch never allows or blocks a target; it only annotates country and domain category.
+
+- Console: **GEO OFF / GEO ON** in the top bar. The choice is stored in `data/settings.json`.
+- Environment: `INFINITUM_GEO_ENABLED=on` or `off` overrides the saved switch for that process.
+- CLI: `npm start -- --geo` or `npm start -- --no-geo` writes the saved switch.
+
+Datasets are the v2fly `geoip.dat` and `dlc.dat` (saved as `geosite.dat`) releases pinned in `data/geo/lock.json`. They are not committed. `npm run geo:fetch` downloads them and stops if the official `.sha256sum` asset disagrees with the lockfile. Attribution is in `THIRD_PARTY_NOTICES.md`.
+
 ## Red team rules of engagement
 
 - Repository modules only touch Infinitum repos pulled into the workspace.

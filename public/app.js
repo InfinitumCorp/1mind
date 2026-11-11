@@ -5,7 +5,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const main = $("#main");
 const drawer = $("#drawer");
 
-const state = { ov: null, view: "overview", filter: { div: "all", q: "" }, rtFilter: "open", sevFilter: "all", jobSel: null, timers: [] };
+const state = { ov: null, settings: { geoRouting: false, effective: false, envLocked: false }, view: "overview", filter: { div: "all", q: "" }, rtFilter: "open", sevFilter: "all", jobSel: null, timers: [] };
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -69,10 +69,32 @@ function chrome() {
   const running = ov.jobs.filter((j) => j.status === "running").length;
   $("#jobs-pill").innerHTML = `<span class="dot ${running ? "on" : ""}"></span>${running} JOB${running === 1 ? "" : "S"} RUNNING`;
   $$("#rail a").forEach((a) => a.classList.toggle("active", a.dataset.v === state.view));
+  const geoBtn = $("#geo-toggle");
+  if (geoBtn) {
+    const on = state.settings?.effective === true;
+    geoBtn.textContent = on ? "GEO ON" : "GEO OFF";
+    geoBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    geoBtn.title = on
+      ? "Geo routing is on. Audit and scan logs include country and domain category."
+      : "Geo routing is off. Policy, logs, and scans stay unchanged.";
+  }
 }
 setInterval(() => {
   $("#clock").textContent = new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
 }, 1000);
+
+$("#geo-toggle").onclick = () => {
+  const next = !(state.settings?.geoRouting === true);
+  act(async () => {
+    const saved = await api("/api/settings", { method: "POST", body: { geoRouting: next } });
+    state.settings = saved;
+    if (saved.envLocked && saved.effective !== saved.geoRouting) {
+      toast(`Saved geo routing ${saved.geoRouting ? "on" : "off"}. INFINITUM_GEO_ENABLED keeps this process ${saved.effective ? "on" : "off"}.`);
+    } else {
+      toast(`Geo routing ${saved.effective ? "on" : "off"}`);
+    }
+  });
+};
 
 $("#theme").onclick = () => {
   const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
@@ -588,6 +610,21 @@ async function paintJob() {
 
 /* ---------- audit ---------- */
 
+function auditDetail(rest) {
+  return Object.entries(rest)
+    .map(([k, v]) => {
+      if (k === "geo" && v && typeof v === "object") {
+        const bits = [];
+        if ("country" in v) bits.push(`country:${v.country || "-"}`);
+        if (Array.isArray(v.lists)) bits.push(`lists:${v.lists.join(",") || "-"}`);
+        if (Array.isArray(v.categories)) bits.push(`categories:${v.categories.join(",") || "-"}`);
+        return `geo=${bits.join(" ")}`;
+      }
+      return `${k}=${v}`;
+    })
+    .join("  ");
+}
+
 async function viewAudit() {
   const rows = await api("/api/audit");
   main.innerHTML = `
@@ -597,7 +634,7 @@ async function viewAudit() {
   <table><thead><tr><th>Time (UTC)</th><th>Action</th><th>Detail</th></tr></thead><tbody>
   ${rows.map((a) => {
     const { ts, action, ...rest } = a;
-    return `<tr><td class="mono dim">${esc(ts.replace("T", " ").slice(0, 19))}</td><td class="mono">${esc(action)}</td><td class="mono faint" style="font-size:11px">${esc(Object.entries(rest).map(([k, v]) => `${k}=${v}`).join("  "))}</td></tr>`;
+    return `<tr><td class="mono dim">${esc(ts.replace("T", " ").slice(0, 19))}</td><td class="mono">${esc(action)}</td><td class="mono faint" style="font-size:11px">${esc(auditDetail(rest))}</td></tr>`;
   }).join("")}
   </tbody></table></div></div>`;
 }
@@ -608,6 +645,7 @@ const VIEWS = { overview: viewOverview, products: viewProducts, pipeline: viewPi
 
 async function refresh() {
   state.ov = await api("/api/overview");
+  state.settings = await api("/api/settings");
   if (!state.findings) state.findings = (await api("/api/redteam")).findings;
   chrome();
 }
