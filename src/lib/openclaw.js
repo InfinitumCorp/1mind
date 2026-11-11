@@ -188,7 +188,7 @@ export async function health(env = process.env) {
 /** Agent targets the gateway exposes (openclaw, openclaw/default, openclaw/<agentId>). */
 export async function agents(env = process.env) {
   const s = settings(env);
-  const r = await fetch(`${s.url}/v1/models`, { headers: authHeaders(env), signal: AbortSignal.timeout(5000) });
+  const r = await fetch(`${s.url}/v1/models`, { headers: authHeaders(env), signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error(`gateway /v1/models: HTTP ${r.status}`);
   const j = await r.json();
   return (j.data || []).map((m) => m.id).filter(Boolean);
@@ -196,22 +196,31 @@ export async function agents(env = process.env) {
 
 const AGENT = /^(openclaw(\/[\w.-]+)?|openclaw:[\w.-]+|agent:[\w.-]+)$/;
 const THREAD = /^[\w.-]{1,64}$/;
+const badInput = (m) => Object.assign(new Error(m), { status: 400 });
 
 /** One chat turn. `thread` keeps an OpenClaw session across turns (OpenAI `user` field). */
 export async function chat({ agent = "openclaw/default", message, thread }, env = process.env, { timeoutMs = 300_000 } = {}) {
-  if (!AGENT.test(agent)) throw new Error("agent must be openclaw, openclaw/<id> or agent:<id>");
+  if (!AGENT.test(agent)) throw badInput("agent must be openclaw, openclaw/<id> or agent:<id>");
   const text = String(message ?? "").trim();
-  if (!text || text.length > 20_000) throw new Error("message must be 1-20000 chars");
-  if (thread !== undefined && !THREAD.test(thread)) throw new Error("thread must be 1-64 word characters");
+  if (!text || text.length > 20_000) throw badInput("message must be 1-20000 chars");
+  if (thread !== undefined && !THREAD.test(thread)) throw badInput("thread must be 1-64 word characters");
   const s = settings(env);
   const r = await fetch(`${s.url}/v1/chat/completions`, {
     method: "POST",
     headers: { "content-type": "application/json", ...authHeaders(env) },
     body: JSON.stringify({ model: agent, messages: [{ role: "user", content: text }], ...(thread ? { user: `1mind-${thread}` } : {}) }),
     signal: AbortSignal.timeout(timeoutMs),
+  }).catch((e) => {
+    if (e.name === "TimeoutError") throw e;
+    throw new Error(`OpenClaw gateway is not reachable at ${s.url}: start it first`);
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(`OpenClaw: ${j.error?.message || `HTTP ${r.status}`}`);
+  if (!r.ok) {
+    const msg = j.error?.message || `HTTP ${r.status}`;
+    // OpenClaw points at its own CLI here; inside 1MIND the key comes from .env.
+    if (/No API key found for provider "anthropic"/.test(msg)) throw new Error("OpenClaw has no Anthropic key: set ANTHROPIC_API_KEY in 1MIND's .env, then stop and start the gateway.");
+    throw new Error(`OpenClaw: ${msg}`);
+  }
   const reply = j.choices?.[0]?.message?.content;
   return { reply: typeof reply === "string" ? reply : JSON.stringify(reply ?? ""), model: j.model || agent, usage: j.usage || null };
 }

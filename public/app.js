@@ -565,12 +565,13 @@ async function viewOpenclaw() {
   const managed = s.mode === "managed";
   const g = o.gateway;
   const up = o.health.live;
+  const ready = o.health.ready;
   const agentOpts = [...new Set(["openclaw/default", ...o.agents])];
   if (!agentOpts.includes(oc.agent)) oc.agent = "openclaw/default";
   const gwState = up ? (o.health.ready ? chip("ready", "st-ok") : chip("starting", "st-running")) : g.running ? chip("starting", "st-running") : chip("stopped", "st-skipped");
   const msgs = oc.msgs.length
     ? oc.msgs.map((m) => `<div class="oc-msg ${m.role}"><div class="who mono">${m.role === "user" ? "OPERATOR" : m.role === "error" ? "ERROR" : esc(m.model || "OPENCLAW")} · ${esc(m.at.slice(11, 19))}</div><div class="txt">${esc(m.text)}</div></div>`).join("")
-    : `<div class="empty">${up ? "GATEWAY READY · SEND AN INSTRUCTION" : "START THE GATEWAY TO TALK TO OPENCLAW"}</div>`;
+    : `<div class="empty">${ready ? "GATEWAY READY · SEND AN INSTRUCTION" : up || g.running ? "GATEWAY STARTING · THIS TAKES ABOUT A MINUTE" : "START THE GATEWAY TO TALK TO OPENCLAW"}</div>`;
   main.innerHTML = `
   <h1 class="view">OpenClaw</h1>
   <div class="view-sub up">Agent gateway built into 1MIND · ${managed ? "managed by 1MIND, loopback only" : "external gateway on a private address"} · ${o.live ? "Claude key present" : "no ANTHROPIC_API_KEY: the agent cannot answer until one is set in .env"}</div>
@@ -599,13 +600,23 @@ async function viewOpenclaw() {
       <button class="btn ghost sm" id="oc-new" title="Start a new OpenClaw session">New thread</button></span></header>
       <div class="body oc-msgs" id="oc-msgs">${msgs}${oc.busy ? `<div class="oc-msg assistant"><div class="who mono">OPENCLAW</div><div class="txt faint">working…</div></div>` : ""}</div>
       <div class="body" style="border-top:1px solid var(--line);display:grid;gap:8px">
-        <textarea class="f" id="oc-input" rows="3" maxlength="20000" placeholder="Instruction for the agent · Ctrl+Enter to send" ${up && !oc.busy ? "" : "disabled"}>${esc(oc.draft)}</textarea>
-        <div class="row"><button class="btn" id="oc-send" ${up && !oc.busy ? "" : "disabled"}>Send</button><span class="mono faint" style="font-size:11px">thread ${esc(oc.thread)} · each turn is audited (agent and length, not content)</span></div>
+        <textarea class="f" id="oc-input" rows="3" maxlength="20000" placeholder="Instruction for the agent · Ctrl+Enter to send" ${ready && !oc.busy ? "" : "disabled"}>${esc(oc.draft)}</textarea>
+        <div class="row"><button class="btn" id="oc-send" ${ready && !oc.busy ? "" : "disabled"}>Send</button><span class="mono faint" style="font-size:11px">thread ${esc(oc.thread)} · each turn is audited (agent and length, not content)</span></div>
       </div>
     </div>
   </div>`;
   const box = $("#oc-msgs");
   box.scrollTop = box.scrollHeight;
+  // The gateway takes a minute or more to boot; keep checking until it is ready (not while someone types).
+  clearTimeout(state.ocTimer);
+  if (managed && g.running && !o.health.ready) {
+    const tick = () => {
+      if (state.view !== "openclaw") return;
+      if (document.activeElement?.matches("input,textarea,select")) state.ocTimer = setTimeout(tick, 5000);
+      else viewOpenclaw();
+    };
+    state.ocTimer = setTimeout(tick, 5000);
+  }
   api("/api/openclaw/logs")
     .then((lines) => {
       const el = $("#oc-log");

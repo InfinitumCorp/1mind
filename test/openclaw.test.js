@@ -72,6 +72,19 @@ test("chat input is validated before anything is sent", async () => {
   await assert.rejects(chat({ message: "hi", thread: "../etc" }, env), /thread/);
 });
 
+test("bad input is a 400 and a missing provider key points at 1MIND's .env", async () => {
+  const e = await chat({ message: "" }, { OPENCLAW_URL: "http://127.0.0.1:9" }).catch((x) => x);
+  assert.equal(e.status, 400);
+  const srv = http.createServer((_, res) => res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: 'No API key found for provider "anthropic". Auth store: /x' } })));
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  try {
+    await assert.rejects(chat({ message: "hi" }, { OPENCLAW_URL: `http://127.0.0.1:${srv.address().port}`, OPENCLAW_GATEWAY_TOKEN: "t" }), /ANTHROPIC_API_KEY in 1MIND's \.env/);
+  } finally {
+    srv.close();
+  }
+});
+
 test("an unreachable gateway reports down instead of throwing", async () => {
   assert.deepEqual(await health({ OPENCLAW_URL: "http://127.0.0.1:9" }), { live: false, ready: false, liveStatus: null, readyStatus: null });
+  await assert.rejects(chat({ message: "hi" }, { OPENCLAW_URL: "http://127.0.0.1:9", OPENCLAW_GATEWAY_TOKEN: "t" }), /not reachable at http:\/\/127\.0\.0\.1:9/);
 });

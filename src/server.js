@@ -309,12 +309,16 @@ route("POST", "/api/openclaw/gateway/:op", async ({ op }) => {
   }
 });
 route("POST", "/api/openclaw/chat", async (_, b) => {
+  // Every turn is audited, failed ones too: agent and length, never the content.
+  const entry = { agent: b.agent || "openclaw/default", chars: String(b.message || "").length };
   try {
     const r = await oc.chat({ agent: b.agent || undefined, message: b.message, thread: b.thread || undefined });
-    audit("openclaw.chat", { agent: b.agent || "openclaw/default", chars: String(b.message || "").length });
+    audit("openclaw.chat", { ...entry, ok: true });
     return r;
   } catch (e) {
-    throw httpError(e.name === "TimeoutError" ? 504 : 502, e.message);
+    const status = e.status || (e.name === "TimeoutError" ? 504 : 502);
+    audit("openclaw.chat", { ...entry, ok: false, status });
+    throw httpError(status, e.message);
   }
 });
 
