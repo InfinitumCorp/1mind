@@ -100,12 +100,15 @@ export async function finishSignIn({ issuer, clientId, redirectUri, secret, quer
   return { profile: out.profile, next: pending.next };
 }
 
-/** True when the profile is allowed in. An empty owner list lets nobody in. */
-export function isOwner(profile, owners) {
-  if (!profile) return false;
+/** The CID_OWNERS entry (cid, username, handle or email) this profile matches, or null. */
+export function ownerMatch(profile, owners) {
+  if (!profile) return null;
   const ids = [profile.cid, profile.username, profile.handle, profile.email].filter(Boolean).map((s) => String(s).toLowerCase());
-  return owners.some((o) => ids.includes(o));
+  return owners.find((o) => ids.includes(o)) ?? null;
 }
+
+/** True when the profile is allowed in. An empty owner list lets nobody in. */
+export const isOwner = (profile, owners) => ownerMatch(profile, owners) !== null;
 
 function safeNext(next) {
   const s = String(next || "/");

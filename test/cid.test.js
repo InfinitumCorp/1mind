@@ -50,3 +50,12 @@ test("owners: matches cid, username or email; empty list lets nobody in", () => 
   assert.ok(!isOwner({ cid: "cid_1" }, []));
   assert.equal(cidConfig({}).issuer, "https://id.cumuluscloud.app");
 });
+
+test("ownerMatch returns the CID_OWNERS entry that let the profile in", async () => {
+  const { ownerMatch } = await import("../src/lib/cid.js");
+  const owners = ["info@theinfinitumcorporation.com", "cid_abc"];
+  assert.equal(ownerMatch({ cid: "cid_zzz", email: "Info@TheInfinitumCorporation.com" }, owners), "info@theinfinitumcorporation.com");
+  assert.equal(ownerMatch({ cid: "cid_abc" }, owners), "cid_abc");
+  assert.equal(ownerMatch({ cid: "cid_other", email: "x@y.z" }, owners), null);
+  assert.equal(ownerMatch(null, owners), null);
+});

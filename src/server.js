@@ -13,7 +13,7 @@ import { DIVISIONS } from "./lib/products.js";
 import { withNetworkRetry } from "./lib/net.js";
 import * as rt from "./lib/redteam.js";
 import { conjure, refine } from "./conjure/engine.js";
-import { cidConfig, startSignIn, finishSignIn, clearPending, isOwner } from "./lib/cid.js";
+import { cidConfig, startSignIn, finishSignIn, clearPending, ownerMatch } from "./lib/cid.js";
 import { zipDeliverable } from "./conjure/zip.js";
 
 // Server-side signing secret for session cookies. People never type it: they sign in with Cumulus ID.
@@ -33,16 +33,28 @@ const safeEqual = (a, b) => {
 };
 const cookies = (req) => Object.fromEntries((req.headers.cookie || "").split(/;\s*/).filter(Boolean).map((c) => [c.split("=")[0], c.split("=").slice(1).join("=")]));
 const sign = (v) => crypto.createHmac("sha256", SECRET).update(`1mind-session-v2|${v}`).digest("base64url");
-const sessionFor = (cid) => {
-  const v = `${Buffer.from(cid).toString("base64url")}.${Math.floor(Date.now() / 1000) + SESSION_TTL_S}`;
+const b64 = (s) => Buffer.from(s).toString("base64url");
+const unb64 = (s) => Buffer.from(s, "base64url").toString("utf8");
+// The session records which CID_OWNERS entry let this person in (a cid, username, handle or
+// email), so removing that entry from CID_OWNERS ends the session on the next request.
+const sessionFor = (cid, owner) => {
+  const v = `${b64(cid)}.${b64(owner)}.${Math.floor(Date.now() / 1000) + SESSION_TTL_S}`;
   return `${v}.${sign(v)}`;
 };
 /** The signed-in Cumulus ID, or null. */
 const sessionCid = (req) => {
-  const [id, exp, mac] = String(cookies(req)[COOKIE] || "").split(".");
-  if (!id || !exp || !mac || !safeEqual(mac, sign(`${id}.${exp}`)) || Number(exp) < Date.now() / 1000) return null;
-  const cid = Buffer.from(id, "base64url").toString("utf8");
-  return isOwner({ cid }, CID.owners) ? cid : null;
+  const [id, owner, exp, mac] = String(cookies(req)[COOKIE] || "").split(".");
+  if (!id || !owner || !exp || !mac || !safeEqual(mac, sign(`${id}.${owner}.${exp}`)) || Number(exp) < Date.now() / 1000) return null;
+  return CID.owners.includes(unb64(owner)) ? unb64(id) : null;
+};
+// Behind nginx every request comes from 127.0.0.1; with ONEMIND_TRUST_PROXY=1 the audit log
+// records the X-Real-IP that nginx sets instead (only trusted when the peer is loopback).
+const TRUST_PROXY = process.env.ONEMIND_TRUST_PROXY === "1";
+const clientIp = (req) => {
+  const peer = req.socket.remoteAddress || "";
+  const loopback = peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1";
+  const real = String(req.headers["x-real-ip"] || "");
+  return TRUST_PROXY && loopback && /^[0-9a-fA-F:.]{2,45}$/.test(real) ? real : peer;
 };
 const authed = (req) => Boolean(sessionCid(req));
 
@@ -239,7 +251,9 @@ route("POST", "/api/redteam/scan", async (_, b) => {
   throw httpError(400, "unknown module");
 });
 
-route("GET", "/api/conjure", async () => ({ live: hasClaude(), deliverables: await deliverables(), previewPort: PREVIEW_PORT }));
+// Public origin of the preview server (its own origin, so generated code can't call the 1MIND API).
+const PREVIEW_URL = (process.env.ONEMIND_PREVIEW_URL || `http://127.0.0.1:${PREVIEW_PORT}`).replace(/\/+$/, "");
+route("GET", "/api/conjure", async () => ({ live: hasClaude(), deliverables: await deliverables(), previewPort: PREVIEW_PORT, previewBase: PREVIEW_URL }));
 route("POST", "/api/conjure", async (_, b) => {
   const intent = String(b.intent || "").trim();
   if (!intent || intent.length > 4000) throw httpError(400, "intent must be 1-4000 chars");
@@ -282,15 +296,16 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/auth/cid/callback" && req.method === "GET") {
       try {
         const { profile } = await finishSignIn({ ...CID, redirectUri: REDIRECT_URI, secret: SECRET, query: url.searchParams, cookies: cookies(req) });
-        if (!isOwner(profile, CID.owners)) {
-          audit("auth.denied", { cid: profile.cid, ip: req.socket.remoteAddress });
+        const owner = ownerMatch(profile, CID.owners);
+        if (!owner) {
+          audit("auth.denied", { cid: profile.cid, ip: clientIp(req) });
           return res.writeHead(403, { "content-type": "text/html; charset=utf-8", "set-cookie": clearPending(SECURE), ...SEC_HEADERS }).end(LOGIN("THIS CUMULUS ID HAS NO ACCESS"));
         }
-        audit("auth.ok", { cid: profile.cid, ip: req.socket.remoteAddress });
-        const session = `${COOKIE}=${sessionFor(profile.cid)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_S}${SECURE ? "; Secure" : ""}`;
+        audit("auth.ok", { cid: profile.cid, ip: clientIp(req) });
+        const session = `${COOKIE}=${sessionFor(profile.cid, owner)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_S}${SECURE ? "; Secure" : ""}`;
         return res.writeHead(303, { location: "/", "set-cookie": [session, clearPending(SECURE)] }).end();
       } catch (e) {
-        audit("auth.fail", { ip: req.socket.remoteAddress });
+        audit("auth.fail", { ip: clientIp(req) });
         return res.writeHead(401, { "content-type": "text/html; charset=utf-8", "set-cookie": clearPending(SECURE), ...SEC_HEADERS }).end(LOGIN(e.message));
       }
     }
