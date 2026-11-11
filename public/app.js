@@ -645,6 +645,14 @@ async function viewOpenclaw() {
     oc.busy = true;
     viewOpenclaw();
     try {
+      // "@search <question>": Infinitum Search answers from the web with numbered sources.
+      if (/(^|[^\w@＠./])[@＠]search(?![\w-]|\.[a-z])/i.test(message)) {
+        const r = await api("/api/search", { method: "POST", body: { text: message } });
+        const sources = (r.sources || []).map((s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
+        const answer = r.answer || (sources ? "No written answer right now. Sources found:" : "Nothing found on the web for that.");
+        oc.msgs.push({ role: "assistant", text: sources ? `${answer}\n\n${sources}` : answer, model: "INFINITUM SEARCH", at: new Date().toISOString() });
+        return;
+      }
       const r = await api("/api/openclaw/chat", { method: "POST", body: { agent: oc.agent, message, thread: oc.thread } });
       oc.msgs.push({ role: "assistant", text: r.reply, model: r.model, at: new Date().toISOString() });
     } catch (e) {
