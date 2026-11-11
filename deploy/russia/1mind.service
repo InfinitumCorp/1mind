@@ -1,0 +1,29 @@
+[Unit]
+Description=1MIND (Infinitum Corporation internal command platform)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=onemind
+Group=onemind
+WorkingDirectory=/opt/1mind
+EnvironmentFile=/etc/1mind/env
+Environment=NODE_ENV=production HOME=/var/lib/1mind ONEMIND_TRUST_PROXY=1
+ExecStart=/usr/local/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+
+# Hardening: 1MIND runs builds of product repos, so keep it boxed in.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=full
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+ReadWritePaths=/opt/1mind /var/lib/1mind
+
+[Install]
+WantedBy=multi-user.target
