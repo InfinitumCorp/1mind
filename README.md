@@ -25,7 +25,7 @@ npm install
 npm start          # http://127.0.0.1:4400
 ```
 
-Sign in with the token in `.1mind-token` (generated on first start) or set `ONEMIND_TOKEN` in `.env`. GitHub access uses the machine's `gh` login; no GitHub token is stored by 1MIND. For live Conjure put `ANTHROPIC_API_KEY` in `.env`; without it Conjure runs on its offline mock provider.
+Sign in with Cumulus ID (id.cumuluscloud.app). People without one press **Create a Cumulus ID** on the same screen and come back signed in. Set `CID_OWNERS` (comma-separated CIDs, usernames or emails) to say who may enter; nobody can until it is set. `CID_CLIENT_ID` defaults to `1mind`, `CID_ISSUER` to `https://id.cumuluscloud.app` (point it at a mirror that loads in Russia), and `ONEMIND_PUBLIC_URL` to `http://127.0.0.1:<port>` (the redirect is `<that>/auth/cid/callback`, which must be on the issuer's allowlist). `.1mind-token` / `ONEMIND_TOKEN` is now only the server's cookie-signing secret; nobody types it. GitHub access uses the machine's `gh` login; no GitHub token is stored by 1MIND. For live Conjure put `ANTHROPIC_API_KEY` in `.env`; without it Conjure runs on its offline mock provider.
 
 ## Red team rules of engagement
 
@@ -37,7 +37,7 @@ Sign in with the token in `.1mind-token` (generated on first start) or set `ONEM
 ## Security
 
 - Binds to `127.0.0.1` only. Expose it remotely only behind an authenticated tunnel (e.g. Cloudflare Access / Tailscale).
-- HttpOnly + SameSite=Strict session cookie, timing-safe token check, CSRF header on every state change, strict CSP, no third-party scripts.
+- HttpOnly + SameSite=Lax session cookie (Lax so the Cumulus ID redirect can land), Cumulus ID sign-in (PKCE S256) with a signed, expiring session cookie, CSRF header on every state change, strict CSP, no third-party scripts.
 - Child processes never go through a shell except package-manager shims on Windows, whose arguments are allow-listed.
 - Secrets found by the sweep are masked in findings.
 
