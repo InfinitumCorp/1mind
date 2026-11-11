@@ -512,6 +512,32 @@ function mod(id, title, desc, opts, disabled) {
 
 /* ---------- conjure ---------- */
 
+// @scalvs / @scalus: the SCALVS agent (on OpenClaw). @conjure: a Conjure prediction-model forecast.
+// "@openclaw" is not a trigger; @conjure wins when the text has both.
+const ASSIST_SCALVS = /(^|[^\w@＠./])[@＠]scal(?:vs|us)(?![\w-]|\.[a-z])/i;
+const ASSIST_CONJURE = /(^|[^\w@./])@conjure(?![\w-]|\.[a-z])/i;
+async function assist(kind, text) {
+  const out = $("#assist-out");
+  const show = (t) => { if (out) { out.hidden = false; out.textContent = t; } };
+  show(kind === "scalvs" ? "SCALVS is working…" : "Conjure is starting a forecast…");
+  try {
+    if (kind === "scalvs") {
+      const r = await api("/api/scalvs", { method: "POST", body: { text } });
+      return show(r.mention ? `SCALVS · ${r.agent}\n\n${r.text}` : "Write a task after @scalvs.");
+    }
+    let r = await api("/api/predict", { method: "POST", body: { text } });
+    if (!r.mention) return show("Write a question after @conjure.");
+    show(r.text);
+    for (let i = 0; r.ticket && i < 200 && !["done", "failed", "cancelled"].includes(r.prediction && r.prediction.status); i++) {
+      await new Promise((ok) => setTimeout(ok, 2000));
+      r = { ...r, ...(await api(`/api/predict/${r.ticket}`)) };
+      show(r.text);
+    }
+  } catch (e) {
+    show(e.message || String(e));
+  }
+}
+
 async function viewConjure() {
   const c = await api("/api/conjure");
   const running = state.ov.jobs.find((j) => j.kind.startsWith("conjure") && j.status === "running");
@@ -525,6 +551,8 @@ async function viewConjure() {
     <label class="chk" style="align-items:center"><input type="checkbox" id="mock" ${c.live ? "" : "checked disabled"}> Offline mock</label>
     ${running ? `<a class="btn ghost sm" href="#jobs" id="watch" style="display:inline-flex;align-items:center;text-decoration:none">Watching: ${esc(running.title)}</a>` : ""}
     <span class="mono faint" style="font-size:11px">PLAN → FORGE → VERIFY → REPAIR → DELIVER</span></div>
+    <div class="mono faint" style="font-size:11px">@scalvs or @scalus &lt;task&gt; asks the SCALVS agent · @conjure &lt;question&gt; runs a Conjure forecast</div>
+    <div id="assist-out" class="mono" style="white-space:pre-wrap;font-size:12px" hidden></div>
   </div></div>
   <div class="panel" style="margin-top:12px"><header>Deliverables · ${c.deliverables.length}</header><div class="body flush scroll">
   <table><thead><tr><th>Name</th><th>Intent</th><th>Verified</th><th>Files</th><th>Cost</th><th>Updated</th><th></th></tr></thead><tbody>
@@ -536,6 +564,8 @@ async function viewConjure() {
   $("#go").onclick = async () => {
     const intent = $("#intent").value.trim();
     if (!intent) return toast("Describe what to build", true);
+    const mention = ASSIST_SCALVS.test(intent) && !ASSIST_CONJURE.test(intent) ? "scalvs" : ASSIST_CONJURE.test(intent) ? "conjure" : null;
+    if (mention) return assist(mention, intent);
     const j = await startJob("/api/conjure", { intent, mock: mock() }, "Conjure");
     if (j?.id) { state.jobSel = j.id; location.hash = "jobs"; }
   };
