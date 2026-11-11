@@ -16,6 +16,7 @@ import { conjure, refine } from "./conjure/engine.js";
 import { cidConfig, startSignIn, finishSignIn, clearPending, ownerMatch } from "./lib/cid.js";
 import { zipDeliverable } from "./conjure/zip.js";
 import * as oc from "./lib/openclaw.js";
+import { searchStatus, askSearch } from "./lib/web-search.js";
 
 // Server-side signing secret for session cookies. People never type it: they sign in with Cumulus ID.
 const SECRET = accessToken();
@@ -333,6 +334,21 @@ route("POST", "/api/openclaw/chat", async (_, b) => {
     const status = e.status || (e.name === "TimeoutError" ? 504 : 502);
     audit("openclaw.chat", { ...entry, ok: false, status });
     throw httpError(status, e.message);
+  }
+});
+
+/* ---------- Infinitum Search (@search) ---------- */
+route("GET", "/api/search", async () => searchStatus());
+route("POST", "/api/search", async (_, b) => {
+  // Audited by length only, never the question.
+  const chars = String(b.query ?? b.text ?? "").length;
+  try {
+    const r = await askSearch(b);
+    audit("search.ask", { chars, ok: true, sources: r.sources.length });
+    return r;
+  } catch (e) {
+    audit("search.ask", { chars, ok: false, status: e.status || 502 });
+    throw httpError(e.status || 502, e.message);
   }
 });
 
