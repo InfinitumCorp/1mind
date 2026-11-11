@@ -37,6 +37,17 @@ The **OPENCLAW** view (key 6) runs an [OpenClaw](https://github.com/openclaw/ope
 - To use a gateway you already run, set `OPENCLAW_URL` (and `OPENCLAW_GATEWAY_TOKEN`). 1MIND refuses public addresses: OpenClaw's chat endpoint is full operator access to the gateway and must stay on loopback or a private network (10/8, 172.16/12, 192.168/16, 100.64/10, `*.ts.net`).
 - Each turn keeps an OpenClaw session per thread. Install, start, stop and every chat turn are audited (agent and message length, never the content). Gateway output is shown with the token and API keys redacted.
 
+## Deploy (Russia)
+
+1MIND runs on the Yandex Cloud VM `conjure-russia` at https://1mind-ru.infinitumcorporation.ai, with Conjure deliverables on https://1mind-ru-preview.infinitumcorporation.ai. Both hosts are DNS-only (grey-cloud) A records pointing at the VM, so they load in Russia without a VPN and everywhere else too. Config is in `deploy/russia/`:
+
+- `install.sh`: run on the VM with `sudo bash deploy/russia/install.sh <branch>`. It is idempotent: it creates the `onemind` user, installs git, gh and python3, clones to `/opt/1mind`, runs `npm ci`, creates `/etc/1mind/env` with a random cookie secret, installs the systemd unit, gets a Let's Encrypt certificate (webroot `/var/www/acme`) and enables nginx.
+- `1mind.service`: sandboxed systemd unit, bound to 127.0.0.1:4400 (preview on :4401). It trusts `X-Real-IP` only from the local nginx.
+- `nginx-1mind.conf` + `1mind-proxy.conf`: TLS, HSTS, noindex, and rate limits on `/auth/` and the API. The preview host is GET-only.
+- `env.example`: the template for `/etc/1mind/env`. Set `CID_OWNERS` there; never commit the real file, and never add `ANTHROPIC_API_KEY` on a server in Russia (Conjure runs on its mock).
+
+After the first install, sign GitHub in once as the service user: `sudo -u onemind -H gh auth login`, then `sudo systemctl restart 1mind`. Sign-in needs `https://1mind-ru.infinitumcorporation.ai` on the `1mind` client's origins in infinitum-nexus `packages/cid/src/id-clients.ts`.
+
 ## Red team rules of engagement
 
 - Repository modules only touch Infinitum repos pulled into the workspace.

@@ -515,7 +515,7 @@ function mod(id, title, desc, opts, disabled) {
 async function viewConjure() {
   const c = await api("/api/conjure");
   const running = state.ov.jobs.find((j) => j.kind.startsWith("conjure") && j.status === "running");
-  const previewBase = `http://127.0.0.1:${c.previewPort}`;
+  const previewBase = c.previewBase || `http://127.0.0.1:${c.previewPort}`;
   main.innerHTML = `
   <h1 class="view">Conjure</h1>
   <div class="view-sub up">Intent in, verified deliverable out · built into 1MIND · ${c.live ? "live Claude" : "offline mock provider (set ANTHROPIC_API_KEY in .env)"}</div>
