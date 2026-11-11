@@ -104,3 +104,16 @@ test("loose .py scripts and static pages in subfolders do not make a repo builda
   assert.equal(p.mode, "none");
   assert.match(p.note, /only/);
 });
+
+test("empty repos and loose-script repos get their own reason", () => {
+  assert.equal(classifyFiles([]).kind, "empty");
+  const s = classifyFiles(["a.mjs", "b.py", "c.patch", "README.md"]);
+  assert.equal(s.kind, "scripts");
+  assert.match(s.note, /loose scripts/);
+});
+
+test("wasm-bindgen cdylib crates are detected for a wasm build", () => {
+  const t = detect(tree({ "Cargo.toml": '[lib]\ncrate-type = ["cdylib"]\n[dependencies]\nwasm-bindgen = "=0.2.100"\n' }));
+  assert.deepEqual(t, { kind: "rust", wasm: true });
+  assert.equal(detect(tree({ "Cargo.toml": "[package]\nname='x'\n" })).wasm, false);
+});

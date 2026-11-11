@@ -5,6 +5,7 @@
 // "skipped" always says why. A build never runs side-effect steps (migrations, deploys, publishes).
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { repoDir } from "./github.js";
 import { load, save } from "./store.js";
 
@@ -24,7 +25,8 @@ const PMS = new Set(["npm", "pnpm", "yarn", "npx"]);
 const SYSTEM = new Set(["node", "bash", "sh", "python", "python3", "go", "cargo", "git", "java", "cmd", "npm", "pnpm", "yarn", "npx", "corepack"]);
 const BIN_PKG = { tsc: "typescript", "vue-tsc": "vue-tsc", next: "next", astro: "astro", vite: "vite", tsx: "tsx", esbuild: "esbuild" };
 const DOC_EXT = new Set(["md", "mdx", "txt", "rst", "pdf", "docx", "doc", "xlsx", "csv", "sql"]);
-const MEDIA_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "mp4", "mov", "psd", "ai", "pdf", "html", "json", "yml", "yaml", "txt", "md", "css"]);
+const SCRIPT_EXT = new Set(["js", "mjs", "cjs", "ts", "py", "sh", "ps1", "patch", "diff"]);
+const MEDIA_EXT =new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "mp4", "mov", "psd", "ai", "pdf", "html", "json", "yml", "yaml", "txt", "md", "css"]);
 
 /** The toolchain at exactly `dir`, or null. */
 export function detect(dir, { loose = true } = {}) {
@@ -44,7 +46,10 @@ export function detect(dir, { loose = true } = {}) {
     const android = files.some((f) => /com\.android/.test(fs.readFileSync(f, "utf8")));
     return { kind: "gradle", android };
   }
-  if (has(dir, "Cargo.toml")) return { kind: "rust" };
+  if (has(dir, "Cargo.toml")) {
+    const toml = fs.readFileSync(path.join(dir, "Cargo.toml"), "utf8");
+    return { kind: "rust", wasm: /wasm-bindgen/.test(toml) && /cdylib/.test(toml) };
+  }
   if (has(dir, "go.mod")) return { kind: "go" };
   if (has(dir, "pyproject.toml") || has(dir, "requirements.txt") || has(dir, "setup.py")) return { kind: "python" };
   const entries = loose ? safeList(dir) : [];
@@ -84,8 +89,11 @@ export function classifyFiles(files) {
   const n = ext.length || 1;
   const docs = ext.filter((e) => DOC_EXT.has(e)).length;
   const media = ext.filter((e) => MEDIA_EXT.has(e)).length;
+  const scripts = ext.filter((e) => SCRIPT_EXT.has(e)).length;
+  if (!files.length) return { kind: "empty", note: "empty repository (no files committed)" };
   if (docs / n >= 0.6) return { kind: "docs", note: `documentation only (${docs}/${ext.length} files are docs)` };
   if (media / n >= 0.6) return { kind: "content", note: `content/assets only (${media}/${ext.length} files are media, pages or data)` };
+  if (scripts / n >= 0.5) return { kind: "scripts", note: `loose scripts and patches, no package manifest (${scripts}/${ext.length} files are scripts)` };
   return { kind: "unknown", note: `no recognised manifest (${ext.length} files)` };
 }
 
@@ -157,6 +165,22 @@ export function buildEnv(env = process.env, platform = process.platform) {
   return { [key]: `${cur};${gitBin}` };
 }
 
+const once = (fn) => {
+  let v;
+  return () => (v === undefined ? (v = fn()) : v);
+};
+const tryRun = (cmd, args) => {
+  try {
+    return execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+  } catch {
+    return "";
+  }
+};
+const rustTargets = once(() => tryRun("rustup", ["target", "list", "--installed"]).split(/\r?\n/).filter(Boolean));
+const onPath = (exe) => (process.env.PATH || process.env.Path || "").split(path.delimiter).some((d) => d && fs.existsSync(path.join(d, exe)));
+/** True on a windows-gnu Rust host that has no MinGW dlltool to link raw-dylib imports. */
+export const gnuWithoutDlltool = once(() => process.platform === "win32" && /host: \S*windows-gnu/.test(tryRun("rustc", ["-vV"])) && !onPath("dlltool.exe"));
+
 /** Builds one component; returns { status, warnings, error, packages? }. */
 async function buildComponent(dir, t, { exec, log, env }) {
   const warnings = [];
@@ -170,13 +194,29 @@ async function buildComponent(dir, t, { exec, log, env }) {
       return { status: "ok", warnings };
     case "gradle": {
       const task = t.android ? "assembleDebug" : "assemble";
-      if (process.platform === "win32") await run("cmd", ["/c", "gradlew.bat", task]);
+      // Explicit .\ path: cmd ignores the current directory when NoDefaultCurrentDirectoryInExePath is set.
+      if (process.platform === "win32") await run("cmd", ["/c", ".\\gradlew.bat", task]);
       else await run("./gradlew", [task]);
       return { status: "ok", warnings };
     }
-    case "rust":
+    case "rust": {
+      if (t.wasm) {
+        // wasm-bindgen crates target the browser; the host toolchain is irrelevant. The
+        // wasm-bindgen CLI step is not run: it rewrites committed output in the repo.
+        if (!rustTargets().includes("wasm32-unknown-unknown")) throw new Error("wasm crate needs: rustup target add wasm32-unknown-unknown");
+        await run("cargo", ["build", "--release", "--target", "wasm32-unknown-unknown"]);
+        return { status: "ok", warnings };
+      }
+      if (gnuWithoutDlltool()) {
+        // windows-gnu without MinGW cannot link raw-dylib crates (windows-sys): a workstation
+        // limitation, not a product defect. Type-check instead and say so.
+        await run("cargo", ["check", "--release"]);
+        warnings.push("type-checked only (cargo check): linking needs MinGW dlltool, which this workstation's windows-gnu Rust toolchain lacks");
+        return { status: "ok", warnings };
+      }
       await run("cargo", ["build", "--release"]);
       return { status: "ok", warnings };
+    }
     case "go":
       await run("go", ["build", "./..."]);
       return { status: "ok", warnings };
