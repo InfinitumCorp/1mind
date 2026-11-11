@@ -13,11 +13,17 @@ import { DIVISIONS } from "./lib/products.js";
 import { withNetworkRetry } from "./lib/net.js";
 import * as rt from "./lib/redteam.js";
 import { conjure, refine } from "./conjure/engine.js";
+import { cidConfig, startSignIn, finishSignIn, clearPending, isOwner } from "./lib/cid.js";
 import { zipDeliverable } from "./conjure/zip.js";
 
-const TOKEN = accessToken();
+// Server-side signing secret for session cookies. People never type it: they sign in with Cumulus ID.
+const SECRET = accessToken();
 const COOKIE = "onemind";
-const SESSION = crypto.createHmac("sha256", TOKEN).update("1mind-session-v1").digest("base64url");
+const SESSION_TTL_S = 43200;
+const CID = cidConfig(process.env, { clientId: "1mind" });
+const PUBLIC_URL = (process.env.ONEMIND_PUBLIC_URL || `http://127.0.0.1:${PORT}`).replace(/\/+$/, "");
+const REDIRECT_URI = `${PUBLIC_URL}/auth/cid/callback`;
+const SECURE = PUBLIC_URL.startsWith("https://");
 const PUBLIC = path.join(ROOT, "public");
 
 const safeEqual = (a, b) => {
@@ -26,7 +32,19 @@ const safeEqual = (a, b) => {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
 const cookies = (req) => Object.fromEntries((req.headers.cookie || "").split(/;\s*/).filter(Boolean).map((c) => [c.split("=")[0], c.split("=").slice(1).join("=")]));
-const authed = (req) => safeEqual(cookies(req)[COOKIE] || "", SESSION);
+const sign = (v) => crypto.createHmac("sha256", SECRET).update(`1mind-session-v2|${v}`).digest("base64url");
+const sessionFor = (cid) => {
+  const v = `${Buffer.from(cid).toString("base64url")}.${Math.floor(Date.now() / 1000) + SESSION_TTL_S}`;
+  return `${v}.${sign(v)}`;
+};
+/** The signed-in Cumulus ID, or null. */
+const sessionCid = (req) => {
+  const [id, exp, mac] = String(cookies(req)[COOKIE] || "").split(".");
+  if (!id || !exp || !mac || !safeEqual(mac, sign(`${id}.${exp}`)) || Number(exp) < Date.now() / 1000) return null;
+  const cid = Buffer.from(id, "base64url").toString("utf8");
+  return isOwner({ cid }, CID.owners) ? cid : null;
+};
+const authed = (req) => Boolean(sessionCid(req));
 
 const SEC_HEADERS = {
   "x-content-type-options": "nosniff",
@@ -49,12 +67,14 @@ async function readJson(req) {
   return s ? JSON.parse(s) : {};
 }
 
+const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const LOGIN = (err) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>1MIND</title><link rel="stylesheet" href="/app.css"></head>
-<body class="login"><form method="post" action="/login" class="login-box">
+<body class="login"><form method="get" action="/auth/cid/start" class="login-box">
 <div class="brand-mark">1<span>MIND</span></div><div class="mono dim">INFINITUM CORPORATION · INTERNAL · RESTRICTED</div>
-${err ? `<div class="err">${err}</div>` : ""}
-<input name="token" type="password" autocomplete="current-password" placeholder="ACCESS TOKEN" required autofocus>
-<button>AUTHENTICATE</button></form></body></html>`;
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+${CID.owners.length ? "" : `<div class="err">NO OWNERS SET · ADD YOUR CUMULUS ID TO CID_OWNERS</div>`}
+<button autofocus>SIGN IN WITH CUMULUS ID</button>
+<button class="alt" name="create" value="1">CREATE A CUMULUS ID</button></form></body></html>`;
 
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" };
 
@@ -251,15 +271,28 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
     if (url.pathname === "/login") {
-      if (req.method === "GET") return res.writeHead(200, { "content-type": "text/html; charset=utf-8", ...SEC_HEADERS }).end(LOGIN(""));
-      const token = new URLSearchParams(await body(req)).get("token") || "";
-      if (!safeEqual(token, TOKEN)) {
+      if (req.method !== "GET") return res.writeHead(405).end();
+      return res.writeHead(200, { "content-type": "text/html; charset=utf-8", ...SEC_HEADERS }).end(LOGIN(""));
+    }
+    if (url.pathname === "/auth/cid/start" && req.method === "GET") {
+      if (!CID.clientId) return res.writeHead(503, { "content-type": "text/html; charset=utf-8", ...SEC_HEADERS }).end(LOGIN("CID_CLIENT_ID IS NOT SET"));
+      const go = startSignIn({ ...CID, redirectUri: REDIRECT_URI, secret: SECRET, create: url.searchParams.get("create") === "1", secure: SECURE });
+      return res.writeHead(302, { location: go.location, "set-cookie": go.cookie }).end();
+    }
+    if (url.pathname === "/auth/cid/callback" && req.method === "GET") {
+      try {
+        const { profile } = await finishSignIn({ ...CID, redirectUri: REDIRECT_URI, secret: SECRET, query: url.searchParams, cookies: cookies(req) });
+        if (!isOwner(profile, CID.owners)) {
+          audit("auth.denied", { cid: profile.cid, ip: req.socket.remoteAddress });
+          return res.writeHead(403, { "content-type": "text/html; charset=utf-8", "set-cookie": clearPending(SECURE), ...SEC_HEADERS }).end(LOGIN("THIS CUMULUS ID HAS NO ACCESS"));
+        }
+        audit("auth.ok", { cid: profile.cid, ip: req.socket.remoteAddress });
+        const session = `${COOKIE}=${sessionFor(profile.cid)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_S}${SECURE ? "; Secure" : ""}`;
+        return res.writeHead(303, { location: "/", "set-cookie": [session, clearPending(SECURE)] }).end();
+      } catch (e) {
         audit("auth.fail", { ip: req.socket.remoteAddress });
-        await new Promise((r) => setTimeout(r, 800));
-        return res.writeHead(401, { "content-type": "text/html; charset=utf-8", ...SEC_HEADERS }).end(LOGIN("ACCESS DENIED"));
+        return res.writeHead(401, { "content-type": "text/html; charset=utf-8", "set-cookie": clearPending(SECURE), ...SEC_HEADERS }).end(LOGIN(e.message));
       }
-      audit("auth.ok", { ip: req.socket.remoteAddress });
-      return res.writeHead(303, { location: "/", "set-cookie": `${COOKIE}=${SESSION}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200` }).end();
     }
     if (url.pathname === "/logout") return res.writeHead(303, { location: "/login", "set-cookie": `${COOKIE}=; Path=/; Max-Age=0` }).end();
     if (url.pathname === "/app.css") return serveStatic(res, "/app.css");
@@ -326,6 +359,6 @@ server.listen(PORT, "127.0.0.1", () => {
   preview.listen(PREVIEW_PORT, "127.0.0.1");
   audit("server.start", { port: PORT });
   console.log(`1MIND online  http://127.0.0.1:${PORT}`);
-  console.log(`access token  ${process.env.ONEMIND_TOKEN ? "(from ONEMIND_TOKEN)" : "in .1mind-token"}`);
+  console.log(`sign-in       Cumulus ID (${CID.issuer}), client ${CID.clientId}, ${CID.owners.length} owner(s) in CID_OWNERS`);
   console.log(`conjure       ${hasClaude() ? "live Claude" : "offline mock (set ANTHROPIC_API_KEY in .env for live)"}`);
 });
