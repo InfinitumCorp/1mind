@@ -18,7 +18,6 @@ This file is maintained as a central progress log. Individual product statuses a
 
 ### Intelligence
 - ei·det·ic: Consent-first identity intelligence. Scaffolded.
-- Zerkalo: Reflexive simulation engine.
 
 ### Defense
 - >_ARGUS Military: Multi-sensor fusion reference. Core logic.

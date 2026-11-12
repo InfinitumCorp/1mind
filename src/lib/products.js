@@ -20,7 +20,6 @@ export const PRODUCTS = {
   RULES: { product: "RULES", division: "platform" },
   "scalvs-ai-metatron-bot": { product: "SCALVS.ai / METATRON¹⁰⁰", division: "platform" },
   eidetic: { product: "ei·det·ic", division: "intel" },
-  zerkalo: { product: "Zerkalo", division: "intel" },
   "argus-military-reference": { product: ">_ARGUS Military", division: "defense" },
   "argus-odin-reference": { product: ">_ARGUS / ODIN° Observe", division: "defense" },
   odin: { product: "ODIN°", division: "defense" },
