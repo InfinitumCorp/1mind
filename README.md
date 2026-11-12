@@ -27,6 +27,8 @@ npm start          # http://127.0.0.1:4400
 
 Sign in with Cumulus ID (id.cumuluscloud.app). People without one press **Create a Cumulus ID** on the same screen and come back signed in. Set `CID_OWNERS` (comma-separated CIDs, usernames or emails) to say who may enter; nobody can until it is set. `CID_CLIENT_ID` defaults to `1mind`, `CID_ISSUER` to `https://id.cumuluscloud.app` (point it at a mirror that loads in Russia), and `ONEMIND_PUBLIC_URL` to `http://127.0.0.1:<port>` (the redirect is `<that>/auth/cid/callback`, which must be on the issuer's allowlist). `.1mind-token` / `ONEMIND_TOKEN` is now only the server's cookie-signing secret; nobody types it. GitHub access uses the machine's `gh` login; no GitHub token is stored by 1MIND. For live Conjure put `ANTHROPIC_API_KEY` in `.env`; without it Conjure runs on its offline mock provider.
 
+The top bar carries the Cumulus://ID account bar (`public/cumulus-bar.js`, a copy of `https://id.cumuluscloud.app/id/bar.js`, because the CSP allows scripts from this origin only): the signed-in person's initial, a menu with their name and `@cumuluscloud.app` address, **Manage your Cumulus://ID**, Cumulus://Mail, the Infinitum product launcher and **Sign out** (`/logout`). 1MIND keeps its own session cookie; `GET /api/me` tells the bar who is signed in.
+
 ## OpenClaw
 
 The **OPENCLAW** view (key 6) runs an [OpenClaw](https://github.com/openclaw/openclaw) agent gateway inside 1MIND and gives operators a console to talk to its agents.
