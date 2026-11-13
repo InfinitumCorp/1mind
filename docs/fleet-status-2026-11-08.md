@@ -7,7 +7,7 @@ Builds ran on the Windows operator workstation (Node 26.13, pnpm 10.28, Python 3
 
 | Result | Count | Repos |
 |---|---|---|
-| Built | 15 | 1mind, architect, Conjure, eidetic, eon, firmament-launch, infinitum-corporation-site, infinitum-defense-site, infinitum-revenue, odin, scalvs-ai, veil-vpn, williamaaronturner-redesign, zerkalo, capital-chronicles |
+| Built | 14 | 1mind, architect, Conjure, eidetic, eon, firmament-launch, infinitum-corporation-site, infinitum-defense-site, infinitum-revenue, odin, scalvs-ai, veil-vpn, williamaaronturner-redesign, capital-chronicles |
 | Nothing to build | 9 | aether, fabric, RULES, InfinitumCorp, scalvs-ai-metatron-bot, argus-military-reference, argus-odin-reference, ukraine-files-flyers, cos-workspace-backup |
 | Failed | 10 | see below |
 

@@ -23,7 +23,7 @@ Workstation: Windows, Node 26.13, pnpm 10.28, Python 3.14, Go 1.27, Rust (window
 
 | Result | Count | Repos |
 |---|---|---|
-| Built | 27 | 1mind, aether, aleph-pr, architect, argus-military-reference, argus-odin-reference, capital-chronicles, Conjure, cumulus-exchange, cumulus-mail, eidetic, eon, fabric, firmament-launch, hrvst, infinitum-academy, infinitum-corporation-site, infinitum-defense-site, infinitum-nexus, infinitum-revenue, odin, odin-daemon, scalvs-ai, scalvs-ru, veil-vpn, williamaaronturner-redesign, zerkalo |
+| Built | 26 | 1mind, aether, aleph-pr, architect, argus-military-reference, argus-odin-reference, capital-chronicles, Conjure, cumulus-exchange, cumulus-mail, eidetic, eon, fabric, firmament-launch, hrvst, infinitum-academy, infinitum-corporation-site, infinitum-defense-site, infinitum-nexus, infinitum-revenue, odin, odin-daemon, scalvs-ai, scalvs-ru, veil-vpn, williamaaronturner-redesign |
 | Failed | 0 |  |
 | Nothing to build | 7 | cos-workspace-backup (content), flower-pollen (empty), InfinitumCorp (docs), RULES (docs), scalvs-ai-metatron-bot (docs), ukraine-files-flyers (content), veil-phase1 (scripts) |
 
