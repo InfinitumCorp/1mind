@@ -16,6 +16,8 @@ import { conjure, refine } from "./conjure/engine.js";
 import { cidConfig, startSignIn, finishSignIn, clearPending, ownerMatch } from "./lib/cid.js";
 import { zipDeliverable } from "./conjure/zip.js";
 import * as oc from "./lib/openclaw.js";
+import { assistRoutes } from "./assist.js";
+import { toWebRequest, sendWebResponse } from "./openclaw/openclaw.mjs";
 
 // Server-side signing secret for session cookies. People never type it: they sign in with Cumulus ID.
 const SECRET = accessToken();
@@ -161,6 +163,8 @@ async function overview() {
 /* ---------- router ---------- */
 
 const routes = [];
+// @scalvs / @scalus (SCALVS agent on OpenClaw) and @conjure (Conjure forecasts): /api/scalvs, /api/predict.
+const assist = assistRoutes(process.env);
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp("^" + pattern.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"), fn });
 
 route("GET", "/api/overview", async () => overview());
@@ -388,6 +392,13 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) {
       // CSRF: state-changing calls must carry the custom header (cookies are SameSite=Strict too).
       if (req.method !== "GET" && req.headers["x-1mind"] !== "1") return json(res, 403, { error: "missing x-1mind header" });
+      if (url.pathname === "/api/scalvs" || url.pathname === "/api/predict" || url.pathname.startsWith("/api/predict/")) {
+        const handled = await assist(await toWebRequest(req), sessionCid(req));
+        if (handled) {
+          audit(url.pathname === "/api/scalvs" ? "scalvs.ask" : "conjure.predict", { method: req.method, status: handled.status });
+          return void (await sendWebResponse(res, handled));
+        }
+      }
       for (const r of routes) {
         if (r.method !== req.method) continue;
         const m = url.pathname.match(r.re);
