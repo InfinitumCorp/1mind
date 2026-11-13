@@ -20,7 +20,7 @@
   <span class="spacer"></span>
   <span class="stat-pill hide-sm" id="clock">—</span>
   <button class="iconbtn" id="theme">◐ THEME</button>
-  <a class="iconbtn" href="/logout">EXIT</a>
+  <div class="cid-bar" data-cumulus-bar data-create="false"></div>
 </header>
 <div class="shell">
   <nav class="rail" id="rail">
@@ -41,6 +41,10 @@
 </div>
 <aside class="drawer" id="drawer"></aside>
 <div class="graph-tip" id="tip"></div>
+<!-- The Cumulus://ID account bar: a copy of https://id.cumuluscloud.app/id/bar.js (the CSP allows
+     scripts from this origin only). 1MIND keeps its own server session, so the bar's sign-in and
+     sign-out go to /auth/cid/start and /logout, and app.js tells it who is signed in. -->
+<script src="/cumulus-bar.js" data-client="1mind" data-signin="/auth/cid/start" data-signout="/logout" defer></script>
 <script src="/app.js" type="module"></script>
 </body>
 </html>

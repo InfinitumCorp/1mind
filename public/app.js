@@ -788,6 +788,15 @@ setInterval(async () => {
   lastSig = sig;
 }, 2500);
 
+// The Cumulus://ID account bar (/cumulus-bar.js): show who is signed in to this server session.
+// Module scripts run after deferred ones, so window.CumulusBar is already there.
+api("/api/me")
+  .then((me) => {
+    window.CumulusBar?.setProfile({ name: me.name, username: me.username, email: me.email });
+    $("[data-cumulus-bar]")?.classList.add("ready");
+  })
+  .catch(() => {});
+
 (async () => {
   main.innerHTML = `<div class="empty">ESTABLISHING LINK…</div>`;
   try {

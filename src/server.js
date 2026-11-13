@@ -35,21 +35,29 @@ const safeEqual = (a, b) => {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
 const cookies = (req) => Object.fromEntries((req.headers.cookie || "").split(/;\s*/).filter(Boolean).map((c) => [c.split("=")[0], c.split("=").slice(1).join("=")]));
-const sign = (v) => crypto.createHmac("sha256", SECRET).update(`1mind-session-v2|${v}`).digest("base64url");
+const sign = (v) => crypto.createHmac("sha256", SECRET).update(`1mind-session-v3|${v}`).digest("base64url");
 const b64 = (s) => Buffer.from(s).toString("base64url");
 const unb64 = (s) => Buffer.from(s, "base64url").toString("utf8");
 // The session records which CID_OWNERS entry let this person in (a cid, username, handle or
-// email), so removing that entry from CID_OWNERS ends the session on the next request.
-const sessionFor = (cid, owner) => {
-  const v = `${b64(cid)}.${b64(owner)}.${Math.floor(Date.now() / 1000) + SESSION_TTL_S}`;
+// email), so removing that entry from CID_OWNERS ends the session on the next request. It also
+// carries the name and address the Cumulus://ID account bar shows (GET /api/me).
+const sessionFor = (cid, owner, profile = {}) => {
+  const who = {};
+  for (const k of ["name", "username", "email"]) if (typeof profile[k] === "string" && profile[k]) who[k] = profile[k].slice(0, 200);
+  const v = `${b64(cid)}.${b64(owner)}.${b64(JSON.stringify(who))}.${Math.floor(Date.now() / 1000) + SESSION_TTL_S}`;
   return `${v}.${sign(v)}`;
 };
-/** The signed-in Cumulus ID, or null. */
-const sessionCid = (req) => {
-  const [id, owner, exp, mac] = String(cookies(req)[COOKIE] || "").split(".");
-  if (!id || !owner || !exp || !mac || !safeEqual(mac, sign(`${id}.${owner}.${exp}`)) || Number(exp) < Date.now() / 1000) return null;
-  return CID.owners.includes(unb64(owner)) ? unb64(id) : null;
+/** The signed-in session ({ cid, profile }), or null. */
+const session = (req) => {
+  const [id, owner, who, exp, mac] = String(cookies(req)[COOKIE] || "").split(".");
+  if (!id || !owner || !who || !exp || !mac || !safeEqual(mac, sign(`${id}.${owner}.${who}.${exp}`)) || Number(exp) < Date.now() / 1000) return null;
+  if (!CID.owners.includes(unb64(owner))) return null;
+  let profile = {};
+  try { profile = JSON.parse(unb64(who)) || {}; } catch { /* signed, so only an old format lands here */ }
+  return { cid: unb64(id), profile };
 };
+/** The signed-in Cumulus ID, or null. */
+const sessionCid = (req) => session(req)?.cid ?? null;
 // Behind nginx every request comes from 127.0.0.1; with ONEMIND_TRUST_PROXY=1 the audit log
 // records the X-Real-IP that nginx sets instead (only trusted when the peer is loopback).
 const TRUST_PROXY = process.env.ONEMIND_TRUST_PROXY === "1";
@@ -167,6 +175,11 @@ const routes = [];
 const assist = assistRoutes(process.env);
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp("^" + pattern.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"), fn });
 
+// Who is signed in, for the Cumulus://ID account bar (window.CumulusBar.setProfile).
+route("GET", "/api/me", async (_p, _b, req) => {
+  const s = session(req);
+  return { cid: s.cid, name: s.profile.name || s.profile.username || "", username: s.profile.username || "", email: s.profile.email || "" };
+});
 route("GET", "/api/overview", async () => overview());
 route("POST", "/api/sync", async () => {
   invalidateRepos();
@@ -355,7 +368,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/auth/cid/start" && req.method === "GET") {
       if (!CID.clientId) return res.writeHead(503, { "content-type": "text/html; charset=utf-8", ...SEC_HEADERS }).end(LOGIN("CID_CLIENT_ID IS NOT SET"));
-      const go = startSignIn({ ...CID, redirectUri: REDIRECT_URI, secret: SECRET, create: url.searchParams.get("create") === "1", secure: SECURE });
+      const go = startSignIn({ ...CID, redirectUri: REDIRECT_URI, secret: SECRET, create: url.searchParams.get("create") === "1" || url.searchParams.get("prompt") === "create", secure: SECURE });
       return res.writeHead(302, { location: go.location, "set-cookie": go.cookie }).end();
     }
     if (url.pathname === "/auth/cid/callback" && req.method === "GET") {
@@ -367,8 +380,8 @@ const server = http.createServer(async (req, res) => {
           return res.writeHead(403, { "content-type": "text/html; charset=utf-8", "set-cookie": clearPending(SECURE), ...SEC_HEADERS }).end(LOGIN("THIS CUMULUS ID HAS NO ACCESS"));
         }
         audit("auth.ok", { cid: profile.cid, ip: clientIp(req) });
-        const session = `${COOKIE}=${sessionFor(profile.cid, owner)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_S}${SECURE ? "; Secure" : ""}`;
-        return res.writeHead(303, { location: "/", "set-cookie": [session, clearPending(SECURE)] }).end();
+        const cookie = `${COOKIE}=${sessionFor(profile.cid, owner, profile)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_S}${SECURE ? "; Secure" : ""}`;
+        return res.writeHead(303, { location: "/", "set-cookie": [cookie, clearPending(SECURE)] }).end();
       } catch (e) {
         audit("auth.fail", { ip: clientIp(req) });
         return res.writeHead(401, { "content-type": "text/html; charset=utf-8", "set-cookie": clearPending(SECURE), ...SEC_HEADERS }).end(LOGIN(e.message));
